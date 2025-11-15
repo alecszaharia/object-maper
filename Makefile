@@ -1,4 +1,4 @@
-.PHONY: help test test-coverage test-file test-filter example clean install
+.PHONY: help test test-coverage test-file test-filter benchmark example clean install
 
 # Docker command configuration
 DOCKER_RUN = docker run --rm -v $$(pwd):/app --user $$(id -u):$$(id -g) -w /app tools:latest
@@ -32,6 +32,9 @@ test-filter: ## Run tests matching filter (usage: make test-filter FILTER=testMe
 		exit 1; \
 	fi
 	$(PHP) vendor/bin/phpunit --filter $(FILTER)
+
+benchmark: ## Run performance benchmarks
+	$(PHP) tests/Benchmarks/WorstCaseBenchmark.php
 
 example: ## Run the basic usage example
 	$(PHP) examples/BasicUsage.php

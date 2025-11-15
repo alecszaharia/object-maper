@@ -66,8 +66,13 @@ class WorstCaseBenchmark
         echo "Warming up...\n";
         $simple = new SimpleSource();
         $simple->prop1 = 'test';
-        $this->mapper->map($simple, SimpleTarget::class);
-        echo "✓ Warmup complete\n\n";
+
+        try {
+            $this->mapper->map($simple, SimpleTarget::class);
+            echo "✓ Warmup complete\n\n";
+        } catch (\Exception $e) {
+            echo "✗ Warmup failed: {$e->getMessage()}\n\n";
+        }
     }
 
     private function benchmarkManyProperties(): void
@@ -80,14 +85,18 @@ class WorstCaseBenchmark
         $startTime = microtime(true);
         $startMemory = memory_get_usage();
 
-        for ($i = 0; $i < self::ITERATIONS; $i++) {
-            $this->mapper->map($source, ManyPropertiesTarget::class);
+        try {
+            for ($i = 0; $i < self::ITERATIONS; $i++) {
+                $this->mapper->map($source, ManyPropertiesTarget::class);
+            }
+
+            $endTime = microtime(true);
+            $endMemory = memory_get_usage();
+
+            $this->recordResult('Many Properties (50 props)', $startTime, $endTime, $startMemory, $endMemory);
+        } catch (\Exception $e) {
+            echo "   ERROR: Benchmark failed - {$e->getMessage()}\n";
         }
-
-        $endTime = microtime(true);
-        $endMemory = memory_get_usage();
-
-        $this->recordResult('Many Properties (50 props)', $startTime, $endTime, $startMemory, $endMemory);
     }
 
     private function benchmarkDeepNesting(): void
@@ -100,14 +109,18 @@ class WorstCaseBenchmark
         $startTime = microtime(true);
         $startMemory = memory_get_usage();
 
-        for ($i = 0; $i < self::ITERATIONS; $i++) {
-            $this->mapper->map($source, NestedPathTarget::class);
+        try {
+            for ($i = 0; $i < self::ITERATIONS; $i++) {
+                $this->mapper->map($source, NestedPathTarget::class);
+            }
+
+            $endTime = microtime(true);
+            $endMemory = memory_get_usage();
+
+            $this->recordResult('Nested Property Paths', $startTime, $endTime, $startMemory, $endMemory);
+        } catch (\Exception $e) {
+            echo "   ERROR: Benchmark failed - {$e->getMessage()}\n";
         }
-
-        $endTime = microtime(true);
-        $endMemory = memory_get_usage();
-
-        $this->recordResult('Nested Property Paths', $startTime, $endTime, $startMemory, $endMemory);
     }
 
     private function benchmarkLargeArrays(): void
@@ -144,14 +157,18 @@ class WorstCaseBenchmark
         // Run fewer iterations for large arrays to keep total time reasonable
         $iterations = $size >= self::ARRAY_SIZE_LARGE ? 10 : self::ITERATIONS;
 
-        for ($i = 0; $i < $iterations; $i++) {
-            $this->mapper->map($source, ArrayMappingTarget::class);
+        try {
+            for ($i = 0; $i < $iterations; $i++) {
+                $this->mapper->map($source, ArrayMappingTarget::class);
+            }
+
+            $endTime = microtime(true);
+            $endMemory = memory_get_usage();
+
+            $this->recordResult($label, $startTime, $endTime, $startMemory, $endMemory, $iterations);
+        } catch (\Exception $e) {
+            echo "   ERROR: Benchmark failed - {$e->getMessage()}\n";
         }
-
-        $endTime = microtime(true);
-        $endMemory = memory_get_usage();
-
-        $this->recordResult($label, $startTime, $endTime, $startMemory, $endMemory, $iterations);
     }
 
     private function benchmarkComplexMixedScenario(): void
@@ -166,14 +183,18 @@ class WorstCaseBenchmark
 
         $iterations = 50; // Fewer iterations due to complexity
 
-        for ($i = 0; $i < $iterations; $i++) {
-            $this->mapper->map($source, ComplexTarget::class);
+        try {
+            for ($i = 0; $i < $iterations; $i++) {
+                $this->mapper->map($source, ComplexTarget::class);
+            }
+
+            $endTime = microtime(true);
+            $endMemory = memory_get_usage();
+
+            $this->recordResult('Complex Mixed Scenario', $startTime, $endTime, $startMemory, $endMemory, $iterations);
+        } catch (\Exception $e) {
+            echo "   ERROR: Benchmark failed - {$e->getMessage()}\n";
         }
-
-        $endTime = microtime(true);
-        $endMemory = memory_get_usage();
-
-        $this->recordResult('Complex Mixed Scenario', $startTime, $endTime, $startMemory, $endMemory, $iterations);
     }
 
     private function benchmarkColdCache(): void
@@ -182,36 +203,40 @@ class WorstCaseBenchmark
 
         $results = [];
 
-        for ($i = 0; $i < 10; $i++) {
-            // Create new mapper to clear cache
-            $mapper = new Mapper();
-            $source = new ColdCacheSource();
-            $source->data = "test $i";
+        try {
+            for ($i = 0; $i < 10; $i++) {
+                // Create new mapper to clear cache
+                $mapper = new Mapper();
+                $source = new ColdCacheSource();
+                $source->data = "test $i";
 
-            $startTime = microtime(true);
-            $mapper->map($source, ColdCacheTarget::class);
-            $endTime = microtime(true);
+                $startTime = microtime(true);
+                $mapper->map($source, ColdCacheTarget::class);
+                $endTime = microtime(true);
 
-            $results[] = ($endTime - $startTime) * 1000;
+                $results[] = ($endTime - $startTime) * 1000;
+            }
+
+            $avgTime = array_sum($results) / count($results);
+            $minTime = min($results);
+            $maxTime = max($results);
+
+            echo sprintf(
+                "   Avg: %.3f ms | Min: %.3f ms | Max: %.3f ms\n",
+                $avgTime,
+                $minTime,
+                $maxTime
+            );
+
+            $this->results['Cold Cache (avg)'] = [
+                'time_ms' => $avgTime,
+                'per_op_ms' => $avgTime,
+                'memory_mb' => 0,
+                'ops_per_sec' => $avgTime > 0 ? 1000 / $avgTime : 0
+            ];
+        } catch (\Exception $e) {
+            echo "   ERROR: Benchmark failed - {$e->getMessage()}\n";
         }
-
-        $avgTime = array_sum($results) / count($results);
-        $minTime = min($results);
-        $maxTime = max($results);
-
-        echo sprintf(
-            "   Avg: %.3f ms | Min: %.3f ms | Max: %.3f ms\n",
-            $avgTime,
-            $minTime,
-            $maxTime
-        );
-
-        $this->results['Cold Cache (avg)'] = [
-            'time_ms' => $avgTime,
-            'per_op_ms' => $avgTime,
-            'memory_mb' => 0,
-            'ops_per_sec' => 1000 / $avgTime
-        ];
     }
 
     private function recordResult(
@@ -225,7 +250,8 @@ class WorstCaseBenchmark
         $totalTime = ($endTime - $startTime) * 1000; // Convert to ms
         $avgTime = $totalTime / $iterations;
         $memoryUsed = ($endMemory - $startMemory) / 1024 / 1024; // Convert to MB
-        $opsPerSecond = $iterations / ($endTime - $startTime);
+        $timeDiff = $endTime - $startTime;
+        $opsPerSecond = $timeDiff > 0 ? $iterations / $timeDiff : 0;
 
         echo sprintf(
             "   Total: %.2f ms | Avg: %.3f ms | Memory: %.2f MB | Ops/sec: %.0f\n",
@@ -324,31 +350,6 @@ class WorstCaseBenchmark
         $source->metaCreatedAt = '2024-01-01';
         $source->metaUpdatedBy = 'admin';
         $source->metaUpdatedAt = '2024-01-15';
-    }
-
-    private function fillNestedTarget(NestedPathTarget $target): void
-    {
-        $target->user = new UserInfo();
-        $target->user->id = 0;
-        $target->user->name = '';
-
-        $target->address = new AddressInfo();
-        $target->address->street = '';
-        $target->address->city = '';
-        $target->address->state = '';
-        $target->address->zipCode = '';
-        $target->address->country = '';
-
-        $target->settings = new Settings();
-        $target->settings->theme = '';
-        $target->settings->language = '';
-        $target->settings->notifications = false;
-
-        $target->metadata = new Metadata();
-        $target->metadata->createdBy = '';
-        $target->metadata->createdAt = '';
-        $target->metadata->updatedBy = '';
-        $target->metadata->updatedAt = '';
     }
 
     private function fillComplexSource(ComplexSource $source): void
