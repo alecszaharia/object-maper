@@ -1,0 +1,47 @@
+.PHONY: help test test-coverage test-file test-filter example clean install
+
+# Docker command configuration
+DOCKER_RUN = docker run --rm -v $$(pwd):/app --user $$(id -u):$$(id -g) -w /app tools:latest
+PHP = $(DOCKER_RUN) php
+
+help: ## Show this help message
+	@echo 'Usage: make [target]'
+	@echo ''
+	@echo 'Available targets:'
+	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+install: ## Install dependencies
+	composer install
+
+test: ## Run all tests
+	$(PHP) vendor/bin/phpunit
+
+test-coverage: ## Run tests with coverage report
+	$(PHP) vendor/bin/phpunit --coverage-text
+
+test-file: ## Run specific test file (usage: make test-file FILE=tests/Unit/MapperTest.php)
+	@if [ -z "$(FILE)" ]; then \
+		echo "Error: FILE parameter is required. Usage: make test-file FILE=tests/Unit/MapperTest.php"; \
+		exit 1; \
+	fi
+	$(PHP) vendor/bin/phpunit $(FILE)
+
+test-filter: ## Run tests matching filter (usage: make test-filter FILTER=testMethodName)
+	@if [ -z "$(FILTER)" ]; then \
+		echo "Error: FILTER parameter is required. Usage: make test-filter FILTER=testMethodName"; \
+		exit 1; \
+	fi
+	$(PHP) vendor/bin/phpunit --filter $(FILTER)
+
+example: ## Run the basic usage example
+	$(PHP) examples/BasicUsage.php
+
+clean: ## Clean cache and temporary files
+	rm -rf .phpunit.cache vendor
+
+php: ## Run PHP command (usage: make php CMD="script.php")
+	@if [ -z "$(CMD)" ]; then \
+		echo "Error: CMD parameter is required. Usage: make php CMD=\"script.php\""; \
+		exit 1; \
+	fi
+	$(PHP) $(CMD)
