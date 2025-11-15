@@ -304,6 +304,35 @@ class MappingMetadataTest extends TestCase
         );
     }
 
+    public function testConstructorWithIsMappableTrue(): void
+    {
+        $metadata = new MappingMetadata(
+            className: self::class,
+            isMappable: true
+        );
+
+        $this->assertTrue($metadata->isMappable);
+    }
+
+    public function testConstructorWithIsMappableFalse(): void
+    {
+        $metadata = new MappingMetadata(
+            className: self::class,
+            isMappable: false
+        );
+
+        $this->assertFalse($metadata->isMappable);
+    }
+
+    public function testConstructorDefaultsIsMappableToFalse(): void
+    {
+        $metadata = new MappingMetadata(
+            className: self::class
+        );
+
+        $this->assertFalse($metadata->isMappable);
+    }
+
     public function testPerformanceOfFindOperationsIsConstantTime(): void
     {
         $metadata = new MappingMetadata(self::class);

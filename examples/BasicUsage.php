@@ -2,11 +2,13 @@
 
 require_once __DIR__ . '/../vendor/autoload.php';
 
-use Alecszaharia\Simmap\Attribute\MapTo;
 use Alecszaharia\Simmap\Attribute\Ignore;
+use Alecszaharia\Simmap\Attribute\Mappable;
+use Alecszaharia\Simmap\Attribute\MapTo;
 use Alecszaharia\Simmap\Mapper;
 
 // Example 1: Simple DTO to Entity mapping with auto-mapping
+#[Mappable]
 class UserDTO
 {
     public string $name;
@@ -14,6 +16,7 @@ class UserDTO
     public int $age;
 }
 
+#[Mappable]
 class UserEntity
 {
     public string $name;
@@ -36,6 +39,7 @@ echo "Entity email: {$entity->email}\n";
 echo "Entity age: {$entity->age}\n\n";
 
 // Example 2: Custom property mapping with #[MapTo] attribute
+#[Mappable]
 class ProductDTO
 {
     public string $productName;
@@ -45,6 +49,7 @@ class ProductDTO
     public int $stock;
 }
 
+#[Mappable]
 class ProductEntity
 {
     public string $productName;
@@ -69,12 +74,14 @@ echo "Example 3 - Symmetrical mapping:\n";
 echo "Stock (mapped from quantity): {$productDto2->stock}\n\n";
 
 // Example 4: Nested property mapping
+#[Mappable]
 class Address
 {
     public string $city;
     public string $country;
 }
 
+#[Mappable]
 class PersonDTO
 {
     public string $name;
@@ -86,6 +93,7 @@ class PersonDTO
     public string $country;
 }
 
+#[Mappable]
 class PersonEntity
 {
     public string $name;
@@ -109,6 +117,7 @@ echo "City: {$personEntity->address->city}\n";
 echo "Country: {$personEntity->address->country}\n\n";
 
 // Example 5: Using #[Ignore] attribute
+#[Mappable]
 class OrderDTO
 {
     public int $orderId;
@@ -118,6 +127,7 @@ class OrderDTO
     public string $tempData; // This won't be mapped
 }
 
+#[Mappable]
 class OrderEntity
 {
     public int $orderId;
@@ -135,3 +145,65 @@ echo "Example 5 - Ignore attribute:\n";
 echo "Order ID: {$orderEntity->orderId}\n";
 echo "Total: {$orderEntity->total}\n";
 echo "Temp data (should be 'default'): {$orderEntity->tempData}\n\n";
+
+// Example 6: Array mapping with #[MapArray] attribute
+use Alecszaharia\Simmap\Attribute\MapArray;
+
+#[Mappable]
+class CartItemDTO
+{
+    public string $productName;
+    public int $quantity;
+    public float $price;
+}
+
+#[Mappable]
+class CartItem
+{
+    public string $productName;
+    public int $quantity;
+    public float $price;
+}
+
+#[Mappable]
+class ShoppingCartDTO
+{
+    public int $cartId;
+
+    #[MapArray(CartItem::class)]
+    public array $items = [];
+}
+
+#[Mappable]
+class ShoppingCart
+{
+    public int $cartId;
+
+    #[MapArray(CartItemDTO::class)]
+    public array $items = [];
+}
+
+$item1 = new CartItemDTO();
+$item1->productName = 'Laptop';
+$item1->quantity = 1;
+$item1->price = 999.99;
+
+$item2 = new CartItemDTO();
+$item2->productName = 'Mouse';
+$item2->quantity = 2;
+$item2->price = 29.99;
+
+$cartDto = new ShoppingCartDTO();
+$cartDto->cartId = 1001;
+$cartDto->items = [$item1, $item2];
+
+$cart = $mapper->map($cartDto, ShoppingCart::class);
+echo "Example 6 - Array mapping:\n";
+echo "Cart ID: {$cart->cartId}\n";
+echo "Number of items: " . count($cart->items) . "\n";
+echo "First item: {$cart->items[0]->productName} (qty: {$cart->items[0]->quantity}, price: \${$cart->items[0]->price})\n";
+echo "Second item: {$cart->items[1]->productName} (qty: {$cart->items[1]->quantity}, price: \${$cart->items[1]->price})\n\n";
+
+// Symmetrical array mapping works too!
+$cartDto2 = $mapper->map($cart, ShoppingCartDTO::class);
+echo "Symmetrical array mapping - items count: " . count($cartDto2->items) . "\n";

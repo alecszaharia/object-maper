@@ -48,6 +48,15 @@ class Mapper implements MapperInterface
         $sourceMetadata = $this->metadataReader->getMetadata($source);
         $targetMetadata = $this->metadataReader->getMetadata($targetObject);
 
+        // Validate both classes are mappable
+        if (!$sourceMetadata->isMappable) {
+            throw MappingException::notMappable(get_class($source), 'source');
+        }
+
+        if (!$targetMetadata->isMappable) {
+            throw MappingException::notMappable(get_class($targetObject), 'target');
+        }
+
         // Get all properties from source object using cached reflection
         $sourceProperties = $sourceMetadata->reflection->getProperties();
 
@@ -76,6 +85,12 @@ class Mapper implements MapperInterface
             } catch (NoSuchPropertyException | AccessException | UninitializedPropertyException $e) {
                 // Skip properties that can't be read (non-existent, inaccessible, or uninitialized)
                 continue;
+            }
+
+            // Check if this is an array mapping - if so, map each element
+            $arrayMapping = $sourceMetadata->getArrayMapping($propertyName);
+            if ($arrayMapping !== null && is_array($value)) {
+                $value = $this->mapArray($value, $arrayMapping->targetElementClass);
             }
 
             // Write value to target using PropertyAccessor
@@ -159,5 +174,32 @@ class Mapper implements MapperInterface
         }
 
         return null;
+    }
+
+    /**
+     * Maps an array of objects to another array, converting each element.
+     *
+     * This method recursively maps each element in the source array to the target class,
+     * preserving array keys for both indexed and associative arrays.
+     *
+     * @param array $sourceArray The array of source objects
+     * @param string $targetClass The target class to map each element to
+     * @return array The mapped array with same keys
+     */
+    private function mapArray(array $sourceArray, string $targetClass): array
+    {
+        $mappedArray = [];
+
+        foreach ($sourceArray as $key => $element) {
+            // Only map if element is an object
+            if (is_object($element)) {
+                $mappedArray[$key] = $this->map($element, $targetClass);
+            } else {
+                // Preserve non-object values as-is (scalars, arrays, etc.)
+                $mappedArray[$key] = $element;
+            }
+        }
+
+        return $mappedArray;
     }
 }

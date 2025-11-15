@@ -140,6 +140,52 @@ class OrderDTO {
 }
 ```
 
+### Array Mapping
+
+Use `#[MapArray]` to automatically map arrays of objects:
+
+```php
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class OrderItemDTO {
+    public string $productName;
+    public int $quantity;
+}
+
+#[Mappable]
+class OrderItem {
+    public string $productName;
+    public int $quantity;
+}
+
+#[Mappable]
+class OrderDTO {
+    public int $orderId;
+
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
+#[Mappable]
+class Order {
+    public int $orderId;
+
+    #[MapArray(OrderItemDTO::class)]
+    public array $items = [];
+}
+
+// Each item in the array is automatically mapped
+$order = $mapper->map($orderDto, Order::class);
+```
+
+Features:
+- **Automatic element mapping**: Each array element is recursively mapped to the target class
+- **Preserves keys**: Works with both indexed and associative arrays
+- **Symmetrical**: Works in both directions (bidirectional)
+- **Can be combined with `#[MapTo]`**: Change both property name and element type
+
 ## Advanced Usage
 
 ### Mapping to Existing Objects
@@ -305,6 +351,23 @@ Excludes a property from automatic mapping.
 ```php
 #[Ignore]
 public string $internalData;
+```
+
+#### `#[MapArray(class-string $targetClass)]`
+
+Maps an array property with automatic element type conversion.
+
+```php
+#[MapArray(OrderItem::class)]
+public array $items = [];
+```
+
+Can be combined with `#[MapTo]`:
+
+```php
+#[MapArray(OrderItem::class)]
+#[MapTo('orderItems')]
+public array $items = [];
 ```
 
 ## Examples

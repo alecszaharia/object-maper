@@ -36,7 +36,9 @@ class MapperTest extends TestCase
         array $sourceMappings = [],
         array $sourceIgnored = [],
         array $targetMappings = [],
-        array $targetIgnored = []
+        array $targetIgnored = [],
+        bool $sourceIsMappable = true,
+        bool $targetIsMappable = true
     ): ObjectProphecy {
         $metadataReader = $this->prophesize(MetadataReader::class);
 
@@ -44,14 +46,16 @@ class MapperTest extends TestCase
             get_class($source),
             $sourceMappings,
             $sourceIgnored,
-            new ReflectionClass($source)
+            new ReflectionClass($source),
+            $sourceIsMappable
         );
 
         $targetMetadata = new MappingMetadata(
             get_class($target),
             $targetMappings,
             $targetIgnored,
-            new ReflectionClass($target)
+            new ReflectionClass($target),
+            $targetIsMappable
         );
 
         $metadataReader->getMetadata($source)->willReturn($sourceMetadata);
@@ -431,6 +435,85 @@ class MapperTest extends TestCase
             'interface' => [TestInterface::class],
             'non-existent class' => ['NonExistentClass'],
         ];
+    }
+
+    public function testMapThrowsExceptionWhenSourceIsNotMappable(): void
+    {
+        $source = new class {
+            public string $name = 'test';
+        };
+
+        $target = new class {
+            public string $name = '';
+        };
+
+        $propertyAccessor = $this->createMockPropertyAccessor();
+        $metadataReader = $this->createMockMetadataReader(
+            $source,
+            $target,
+            sourceIsMappable: false,  // Source is not mappable
+            targetIsMappable: true
+        );
+
+        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
+
+        $this->expectException(MappingException::class);
+        $this->expectExceptionMessage('cannot be used as source for mapping');
+        $this->expectExceptionMessage('#[Mappable]');
+        $mapper->map($source, $target);
+    }
+
+    public function testMapThrowsExceptionWhenTargetIsNotMappable(): void
+    {
+        $source = new class {
+            public string $name = 'test';
+        };
+
+        $target = new class {
+            public string $name = '';
+        };
+
+        $propertyAccessor = $this->createMockPropertyAccessor();
+        $metadataReader = $this->createMockMetadataReader(
+            $source,
+            $target,
+            sourceIsMappable: true,
+            targetIsMappable: false  // Target is not mappable
+        );
+
+        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
+
+        $this->expectException(MappingException::class);
+        $this->expectExceptionMessage('cannot be used as target for mapping');
+        $this->expectExceptionMessage('#[Mappable]');
+        $mapper->map($source, $target);
+    }
+
+    public function testMapThrowsExceptionWhenBothAreNotMappable(): void
+    {
+        $source = new class {
+            public string $name = 'test';
+        };
+
+        $target = new class {
+            public string $name = '';
+        };
+
+        $propertyAccessor = $this->createMockPropertyAccessor();
+        $metadataReader = $this->createMockMetadataReader(
+            $source,
+            $target,
+            sourceIsMappable: false,  // Source is not mappable
+            targetIsMappable: false   // Target is also not mappable
+        );
+
+        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
+
+        // Should fail on source check first
+        $this->expectException(MappingException::class);
+        $this->expectExceptionMessage('cannot be used as source for mapping');
+        $this->expectExceptionMessage('#[Mappable]');
+        $mapper->map($source, $target);
     }
 }
 

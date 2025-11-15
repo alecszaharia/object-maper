@@ -89,6 +89,28 @@ class DTO {
 }
 ```
 
+### Array Mapping
+
+```php
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class OrderDTO {
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
+#[Mappable]
+class Order {
+    #[MapArray(OrderItemDTO::class)]
+    public array $items = [];
+}
+
+// Automatically maps each array element bidirectionally
+$order = $mapper->map($orderDto, Order::class);
+```
+
 ## Common Use Cases
 
 ### 1. API Request to Entity
@@ -124,16 +146,34 @@ See [Performance Guide](performance.md) for benchmarks and optimization tips.
 
 ### How do I handle collections/arrays?
 
-Simmap maps individual objects, not collections. Map arrays by iterating:
+Use the `#[MapArray]` attribute for automatic array element mapping:
 
+```php
+use Alecszaharia\Simmap\Attribute\MapArray;
+
+class OrderDTO {
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
+$order = $mapper->map($orderDto, Order::class);
+// All items are automatically mapped!
+```
+
+The `#[MapArray]` attribute:
+- Works bidirectionally (symmetrical mapping)
+- Preserves array keys (indexed and associative)
+- Handles mixed content (objects are mapped, scalars preserved)
+
+See [Examples - Array Mapping](examples.md#array-mapping-with-maparray) for detailed examples.
+
+For standalone arrays (not properties), use a helper:
 ```php
 $entities = array_map(
     fn($dto) => $mapper->map($dto, Entity::class),
     $dtos
 );
 ```
-
-See [Examples - Collection Mapping](examples.md#collection-mapping) for helpers.
 
 ### Can I map to existing instances?
 

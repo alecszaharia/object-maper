@@ -3,6 +3,8 @@
 namespace Alecszaharia\Simmap\Metadata;
 
 use Alecszaharia\Simmap\Attribute\Ignore;
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
 use Alecszaharia\Simmap\Attribute\MapTo;
 use ReflectionClass;
 use ReflectionProperty;
@@ -34,7 +36,12 @@ class MetadataReader
         }
 
         $reflection = new ReflectionClass($className);
-        $metadata = new MappingMetadata($className, [], [], $reflection);
+
+        // Check if class is marked with #[Mappable] attribute
+        $mappableAttributes = $reflection->getAttributes(Mappable::class);
+        $isMappable = !empty($mappableAttributes);
+
+        $metadata = new MappingMetadata($className, [], [], $reflection, $isMappable);
 
         // Get all properties including inherited ones
         foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC | ReflectionProperty::IS_PROTECTED) as $property) {
@@ -58,6 +65,14 @@ class MetadataReader
         if (!empty($ignoreAttributes)) {
             $metadata->addIgnoredProperty($propertyName);
             return;
+        }
+
+        // Check for MapArray attribute
+        $mapArrayAttributes = $property->getAttributes(MapArray::class);
+        if (!empty($mapArrayAttributes)) {
+            /** @var MapArray $mapArray */
+            $mapArray = $mapArrayAttributes[0]->newInstance();
+            $metadata->addArrayMapping(new ArrayMapping($propertyName, $mapArray->targetClass));
         }
 
         // Check for MapTo attribute

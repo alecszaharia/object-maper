@@ -49,10 +49,16 @@ class MappingMetadata
     private array $ignoredProperties = [];
 
     /**
+     * @var array<string, ArrayMapping> Array mappings indexed by property name for O(1) lookups
+     */
+    private array $arrayMappings = [];
+
+    /**
      * @param string $className
      * @param PropertyMapping[] $mappings
      * @param string[] $ignoredProperties
      * @param ReflectionClass|null $reflection
+     * @param bool $isMappable Whether the class is marked with #[Mappable] attribute
      * @throws ReflectionException if className does not exist
      * @throws InvalidArgumentException if duplicate mappings are provided or invalid types in arrays
      */
@@ -60,7 +66,8 @@ class MappingMetadata
         public readonly string $className,
         array $mappings = [],
         array $ignoredProperties = [],
-        ?ReflectionClass $reflection = null
+        ?ReflectionClass $reflection = null,
+        public readonly bool $isMappable = false
     ) {
         $this->reflection = $reflection ?? new ReflectionClass($className);
 
@@ -186,5 +193,60 @@ class MappingMetadata
     public function findSourceProperty(string $targetProperty): ?string
     {
         return $this->reverseMappingIndex[$targetProperty] ?? null;
+    }
+
+    /**
+     * Adds an array mapping for a property.
+     *
+     * @throws InvalidArgumentException if property already has an array mapping
+     */
+    public function addArrayMapping(ArrayMapping $arrayMapping): void
+    {
+        // Check for duplicate array mapping
+        if (isset($this->arrayMappings[$arrayMapping->propertyName])) {
+            throw new InvalidArgumentException(
+                sprintf(
+                    'Duplicate array mapping for property "%s" in class "%s". ' .
+                    'Property already has array mapping to "%s".',
+                    $arrayMapping->propertyName,
+                    $this->className,
+                    $this->arrayMappings[$arrayMapping->propertyName]->targetElementClass
+                )
+            );
+        }
+
+        $this->arrayMappings[$arrayMapping->propertyName] = $arrayMapping;
+    }
+
+    /**
+     * Gets the array mapping for a property.
+     *
+     * Performance: O(1) via associative array lookup.
+     *
+     * @return ArrayMapping|null The array mapping if exists, null otherwise
+     */
+    public function getArrayMapping(string $propertyName): ?ArrayMapping
+    {
+        return $this->arrayMappings[$propertyName] ?? null;
+    }
+
+    /**
+     * Checks if a property has an array mapping.
+     *
+     * Performance: O(1) via associative array lookup.
+     */
+    public function isArrayMapping(string $propertyName): bool
+    {
+        return isset($this->arrayMappings[$propertyName]);
+    }
+
+    /**
+     * Gets all array mappings.
+     *
+     * @return ArrayMapping[]
+     */
+    public function getArrayMappings(): array
+    {
+        return array_values($this->arrayMappings);
     }
 }

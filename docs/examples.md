@@ -10,6 +10,7 @@ This document provides real-world examples and advanced use cases for Simmap.
 - [Form Handling](#form-handling)
 - [Multi-Level Nesting](#multi-level-nesting)
 - [Partial Updates](#partial-updates)
+- [Array Mapping with #[MapArray]](#array-mapping-with-maparray)
 - [Collection Mapping](#collection-mapping)
 - [Integration Patterns](#integration-patterns)
 
@@ -529,20 +530,607 @@ class UserUpdateService
 }
 ```
 
-## Collection Mapping
+## Array Mapping with #[MapArray]
 
-### Mapping arrays of objects
+The `#[MapArray]` attribute enables automatic mapping of array elements from one type to another. This is perfect for scenarios where you need to convert collections of objects, such as order items, comments, tags, or any other one-to-many relationships.
+
+### Basic Array Mapping
 
 ```php
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
+use Alecszaharia\Simmap\Mapper;
+
+// Source classes
+#[Mappable]
+class ProductDTO
+{
+    public string $name;
+    public float $price;
+}
+
+#[Mappable]
 class OrderDTO
 {
     public int $customerId;
 
-    #[Ignore]
-    public array $itemDTOs = [];
+    #[MapArray(OrderItemEntity::class)]
+    public array $items = [];
 }
 
+// Target classes
+#[Mappable]
+class OrderItemEntity
+{
+    public string $name;
+    public float $price;
+}
+
+#[Mappable]
+class OrderEntity
+{
+    public int $customerId;
+
+    #[MapArray(ProductDTO::class)]
+    public array $items = [];
+}
+
+// Usage
+$orderDto = new OrderDTO();
+$orderDto->customerId = 123;
+
+$item1 = new ProductDTO();
+$item1->name = 'Laptop';
+$item1->price = 999.99;
+
+$item2 = new ProductDTO();
+$item2->name = 'Mouse';
+$item2->price = 29.99;
+
+$orderDto->items = [$item1, $item2];
+
+$mapper = new Mapper();
+
+// Automatically maps each array element
+$orderEntity = $mapper->map($orderDto, OrderEntity::class);
+// Result: $orderEntity->items contains OrderItemEntity instances
+```
+
+### E-commerce: Order with Line Items
+
+```php
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\MapTo;
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+// API Request DTO
+#[Mappable]
+class CreateOrderRequest
+{
+    public int $customerId;
+
+    #[MapTo('shippingAddress.street')]
+    public string $street;
+
+    #[MapTo('shippingAddress.city')]
+    public string $city;
+
+    #[MapTo('shippingAddress.zipCode')]
+    public string $zipCode;
+
+    #[MapArray(OrderLineItem::class)]
+    public array $lineItems = [];
+}
+
+#[Mappable]
+class OrderLineItemDTO
+{
+    public string $productId;
+    public int $quantity;
+    public float $unitPrice;
+    public ?string $notes = null;
+}
+
+// Domain Entities
+#[Mappable]
+class Order
+{
+    public int $customerId;
+    public Address $shippingAddress;
+
+    #[MapArray(OrderLineItemDTO::class)]
+    public array $lineItems = [];
+
+    public function __construct()
+    {
+        $this->shippingAddress = new Address();
+    }
+}
+
+#[Mappable]
+class OrderLineItem
+{
+    public string $productId;
+    public int $quantity;
+    public float $unitPrice;
+    public ?string $notes = null;
+}
+
+#[Mappable]
+class Address
+{
+    public string $street;
+    public string $city;
+    public string $zipCode;
+}
+
+// Controller
+class OrderController
+{
+    public function __construct(private Mapper $mapper) {}
+
+    public function create(CreateOrderRequest $request): JsonResponse
+    {
+        // Single map() call handles both nested objects AND array mapping
+        $order = $this->mapper->map($request, Order::class);
+
+        // All line items are automatically converted
+        // $order->lineItems contains OrderLineItem instances
+
+        $this->entityManager->persist($order);
+        $this->entityManager->flush();
+
+        return new JsonResponse(['id' => $order->id], 201);
+    }
+}
+```
+
+### Blog Post with Comments
+
+```php
+#[Mappable]
+class BlogPostDTO
+{
+    public string $title;
+    public string $content;
+    public string $authorId;
+
+    #[MapArray(CommentEntity::class)]
+    public array $comments = [];
+}
+
+#[Mappable]
+class CommentDTO
+{
+    public string $author;
+    public string $text;
+    public \DateTimeInterface $createdAt;
+}
+
+#[Mappable]
+class BlogPost
+{
+    public string $title;
+    public string $content;
+    public string $authorId;
+
+    #[MapArray(CommentDTO::class)]
+    public array $comments = [];
+}
+
+#[Mappable]
+class CommentEntity
+{
+    public string $author;
+    public string $text;
+    public \DateTimeInterface $createdAt;
+}
+
+// Map blog post with all comments in one operation
+$blogPost = $mapper->map($blogPostDto, BlogPost::class);
+```
+
+### Associative Arrays (Preserving Keys)
+
+The `#[MapArray]` attribute preserves array keys, making it perfect for associative arrays:
+
+```php
+#[Mappable]
+class ProductCatalogDTO
+{
+    #[MapArray(ProductEntity::class)]
+    public array $products = []; // ['SKU-001' => Product, 'SKU-002' => Product]
+}
+
+#[Mappable]
+class ProductDTO
+{
+    public string $name;
+    public float $price;
+    public int $stock;
+}
+
+#[Mappable]
+class ProductCatalog
+{
+    #[MapArray(ProductDTO::class)]
+    public array $products = [];
+}
+
+#[Mappable]
+class ProductEntity
+{
+    public string $name;
+    public float $price;
+    public int $stock;
+}
+
+// Usage with associative array
+$catalogDto = new ProductCatalogDTO();
+$catalogDto->products = [
+    'SKU-001' => $product1,
+    'SKU-002' => $product2,
+    'SKU-003' => $product3,
+];
+
+$catalog = $mapper->map($catalogDto, ProductCatalog::class);
+// Keys are preserved: $catalog->products['SKU-001'] still exists
+```
+
+### Combining #[MapArray] with #[MapTo]
+
+You can combine array mapping with property name changes:
+
+```php
+#[Mappable]
+class ShoppingCartDTO
+{
+    public string $userId;
+
+    #[MapArray(CartItemEntity::class)]
+    #[MapTo('cartItems')]  // Rename property
+    public array $items = [];
+}
+
+#[Mappable]
+class CartItemDTO
+{
+    public string $productId;
+    public int $quantity;
+}
+
+#[Mappable]
+class ShoppingCart
+{
+    public string $userId;
+
+    #[MapArray(CartItemDTO::class)]
+    public array $cartItems = [];
+}
+
+#[Mappable]
+class CartItemEntity
+{
+    public string $productId;
+    public int $quantity;
+}
+
+// Maps items → cartItems AND converts each element
+$cart = $mapper->map($cartDto, ShoppingCart::class);
+```
+
+### Symmetrical Array Mapping
+
+Array mapping works bidirectionally with a single definition:
+
+```php
+#[Mappable]
+class UserListRequest
+{
+    #[MapArray(UserEntity::class)]
+    public array $users = [];
+}
+
+#[Mappable]
+class UserDTO
+{
+    public string $name;
+    public string $email;
+}
+
+#[Mappable]
+class UserList
+{
+    #[MapArray(UserDTO::class)]
+    public array $users = [];
+}
+
+#[Mappable]
+class UserEntity
+{
+    public string $name;
+    public string $email;
+}
+
+// Forward: DTO → Entity
+$userList = $mapper->map($request, UserList::class);
+
+// Reverse: Entity → DTO
+$requestDto = $mapper->map($userList, UserListRequest::class);
+
+// Both directions work automatically!
+```
+
+### Multiple Array Properties
+
+You can have multiple array mappings in a single class:
+
+```php
+#[Mappable]
+class DocumentDTO
+{
+    public string $title;
+
+    #[MapArray(ImageEntity::class)]
+    public array $images = [];
+
+    #[MapArray(AttachmentEntity::class)]
+    public array $attachments = [];
+
+    #[MapArray(TagEntity::class)]
+    public array $tags = [];
+}
+
+#[Mappable]
+class ImageDTO
+{
+    public string $url;
+    public string $caption;
+}
+
+#[Mappable]
+class AttachmentDTO
+{
+    public string $filename;
+    public string $mimeType;
+    public int $size;
+}
+
+#[Mappable]
+class TagDTO
+{
+    public string $name;
+    public string $color;
+}
+
+#[Mappable]
+class Document
+{
+    public string $title;
+
+    #[MapArray(ImageDTO::class)]
+    public array $images = [];
+
+    #[MapArray(AttachmentDTO::class)]
+    public array $attachments = [];
+
+    #[MapArray(TagDTO::class)]
+    public array $tags = [];
+}
+
+#[Mappable]
+class ImageEntity
+{
+    public string $url;
+    public string $caption;
+}
+
+#[Mappable]
+class AttachmentEntity
+{
+    public string $filename;
+    public string $mimeType;
+    public int $size;
+}
+
+#[Mappable]
+class TagEntity
+{
+    public string $name;
+    public string $color;
+}
+
+// All three arrays are mapped automatically
+$document = $mapper->map($documentDto, Document::class);
+```
+
+### Nested Objects with Arrays
+
+Combine nested property mapping with array mapping:
+
+```php
+#[Mappable]
+class InvoiceDTO
+{
+    public string $invoiceNumber;
+
+    #[MapTo('customer.name')]
+    public string $customerName;
+
+    #[MapTo('customer.email')]
+    public string $customerEmail;
+
+    #[MapArray(InvoiceLineEntity::class)]
+    public array $lineItems = [];
+}
+
+#[Mappable]
+class InvoiceLineDTO
+{
+    public string $description;
+    public float $amount;
+    public int $quantity;
+}
+
+#[Mappable]
+class Invoice
+{
+    public string $invoiceNumber;
+    public Customer $customer;
+
+    #[MapArray(InvoiceLineDTO::class)]
+    public array $lineItems = [];
+
+    public function __construct()
+    {
+        $this->customer = new Customer();
+    }
+}
+
+#[Mappable]
+class Customer
+{
+    public string $name;
+    public string $email;
+}
+
+#[Mappable]
+class InvoiceLineEntity
+{
+    public string $description;
+    public float $amount;
+    public int $quantity;
+}
+
+// Maps nested customer AND line items array
+$invoice = $mapper->map($invoiceDto, Invoice::class);
+```
+
+### Handling Mixed Array Content
+
+Arrays with non-object values are handled gracefully:
+
+```php
+#[Mappable]
+class MixedContentDTO
+{
+    #[MapArray(ProcessedItem::class)]
+    public array $data = [];
+}
+
+$dto = new MixedContentDTO();
+$dto->data = [
+    new RawItem(),        // Mapped to ProcessedItem
+    'plain string',       // Preserved as-is
+    42,                   // Preserved as-is
+    null,                 // Preserved as-is
+    ['nested' => 'array'] // Preserved as-is
+];
+
+$result = $mapper->map($dto, MixedContent::class);
+// Result: Objects are mapped, scalars/nulls/arrays are preserved
+```
+
+### API Response Pagination
+
+```php
+#[Mappable]
+class PaginatedResponse
+{
+    public int $page;
+    public int $totalPages;
+    public int $totalItems;
+
+    #[MapArray(ProductEntity::class)]
+    public array $data = [];
+}
+
+#[Mappable]
+class ProductDTO
+{
+    public int $id;
+    public string $name;
+    public float $price;
+    public bool $inStock;
+}
+
+#[Mappable]
+class ProductList
+{
+    public int $page;
+    public int $totalPages;
+    public int $totalItems;
+
+    #[MapArray(ProductDTO::class)]
+    public array $data = [];
+}
+
+#[Mappable]
+class ProductEntity
+{
+    public int $id;
+    public string $name;
+    public float $price;
+    public bool $inStock;
+}
+
+// Perfect for API responses with collections
+class ProductApiController
+{
+    public function list(int $page = 1): JsonResponse
+    {
+        $products = $this->productRepository->findPaginated($page);
+
+        $response = new PaginatedResponse();
+        $response->page = $page;
+        $response->totalPages = $products->getTotalPages();
+        $response->totalItems = $products->getTotalItems();
+        $response->data = $products->getItems();
+
+        // Convert all entities to DTOs for API response
+        $dto = $this->mapper->map($response, ProductList::class);
+
+        return new JsonResponse($dto);
+    }
+}
+```
+
+## Collection Mapping
+
+Use the `#[MapArray]` attribute for automatic array mapping (see [Array Mapping with #[MapArray]](#array-mapping-with-maparray) section above).
+
+```php
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class OrderDTO
+{
+    public int $customerId;
+
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
+#[Mappable]
 class OrderItemDTO
+{
+    public int $productId;
+    public int $quantity;
+    public float $price;
+}
+
+#[Mappable]
+class Order
+{
+    public int $customerId;
+
+    #[MapArray(OrderItemDTO::class)]
+    public array $items = [];
+}
+
+#[Mappable]
+class OrderItem
 {
     public int $productId;
     public int $quantity;
@@ -553,14 +1141,8 @@ class OrderService
 {
     public function createOrder(OrderDTO $orderDto): Order
     {
-        // Map main order
+        // Single call - both order AND items are mapped automatically
         $order = $this->mapper->map($orderDto, Order::class);
-
-        // Map collection items
-        foreach ($orderDto->itemDTOs as $itemDto) {
-            $item = $this->mapper->map($itemDto, OrderItem::class);
-            $order->addItem($item);
-        }
 
         $this->em->persist($order);
         $this->em->flush();
@@ -570,7 +1152,9 @@ class OrderService
 }
 ```
 
-### Bulk mapping helper
+### Bulk mapping helper (for advanced use cases)
+
+If you need to map standalone arrays (not properties):
 
 ```php
 class MappingHelper
@@ -594,9 +1178,12 @@ class MappingHelper
     }
 }
 
-// Usage
-$orderItems = $helper->mapCollection($itemDTOs, OrderItem::class);
+// Usage for standalone arrays
+$productDTOs = [/* ... */];
+$entities = $helper->mapCollection($productDTOs, ProductEntity::class);
 ```
+
+**Note**: For array properties within objects, always prefer `#[MapArray]` over manual mapping.
 
 ## Integration Patterns
 
@@ -752,14 +1339,17 @@ class ProductListQuery
 
 1. **Always initialize nested objects** in constructors
 2. **Use #[Ignore] for metadata** that shouldn't be persisted
-3. **Handle collections separately** - don't try to map arrays directly
-4. **Create helper methods** for common patterns (bulk mapping, non-null mapping)
-5. **Separate request/response DTOs** even if similar structure
-6. **Map at service boundaries** (controller → service → repository)
-7. **Use mapper in both directions** for symmetry
-8. **Keep DTOs flat**, entities nested
-9. **Validate before mapping** for security
-10. **Map to existing instances** for updates
+3. **Use #[MapArray] for array properties** - automatic element mapping with symmetry support
+4. **Preserve array keys** - `#[MapArray]` maintains both indexed and associative keys
+5. **Create helper methods** for common patterns (bulk mapping, non-null mapping)
+6. **Separate request/response DTOs** even if similar structure
+7. **Map at service boundaries** (controller → service → repository)
+8. **Use mapper in both directions** for symmetry
+9. **Keep DTOs flat**, entities nested (combine with `#[MapArray]` for collections)
+10. **Validate before mapping** for security
+11. **Map to existing instances** for updates
+12. **Combine #[MapArray] with #[MapTo]** to both rename properties and map array elements
+13. **Use #[Mappable]** attribute on all classes involved in array mapping for clarity
 
 ## Performance Tips from Real Usage
 

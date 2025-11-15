@@ -38,6 +38,8 @@ Typical mapping times (10 properties):
 | Simple properties | ~10ms | ~0.5ms |
 | Nested properties (2 levels) | ~12ms | ~1ms |
 | Complex (mixed) | ~15ms | ~1.5ms |
+| Array mapping (10 elements) | ~15ms | ~5ms |
+| Array mapping (100 elements) | ~25ms | ~50ms |
 
 ## Benchmarking
 
@@ -89,6 +91,77 @@ On modern hardware (2020+ CPU):
 Mapped 10000 objects in 5.2341 seconds
 Average: 0.5234 ms per mapping
 Throughput: 1910 mappings/second
+```
+
+### Array Mapping Benchmark
+
+```php
+<?php
+
+require 'vendor/autoload.php';
+
+use Alecszaharia\Simmap\Mapper;
+use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class ItemDTO {
+    public string $name = 'Item';
+    public float $price = 10.99;
+}
+
+#[Mappable]
+class OrderDTO {
+    public int $orderId = 1;
+
+    #[MapArray(Item::class)]
+    public array $items = [];
+}
+
+#[Mappable]
+class Item {
+    public string $name;
+    public float $price;
+}
+
+#[Mappable]
+class Order {
+    public int $orderId;
+
+    #[MapArray(ItemDTO::class)]
+    public array $items = [];
+}
+
+$mapper = new Mapper();
+$iterations = 1000;
+$itemCount = 10;
+
+// Prepare source
+$orderDto = new OrderDTO();
+for ($i = 0; $i < $itemCount; $i++) {
+    $orderDto->items[] = new ItemDTO();
+}
+
+// Warm up
+$mapper->map($orderDto, Order::class);
+
+// Benchmark
+$start = microtime(true);
+for ($i = 0; $i < $iterations; $i++) {
+    $mapper->map($orderDto, Order::class);
+}
+$elapsed = microtime(true) - $start;
+
+printf("Mapped %d orders with %d items each in %.4f seconds\n", $iterations, $itemCount, $elapsed);
+printf("Average: %.4f ms per order\n", ($elapsed / $iterations) * 1000);
+printf("Average per item: %.4f ms\n", ($elapsed / ($iterations * $itemCount)) * 1000);
+```
+
+**Expected output** (10 items per order):
+```
+Mapped 1000 orders with 10 items each in 5.1234 seconds
+Average: 5.1234 ms per order
+Average per item: 0.5123 ms
 ```
 
 ## Optimization Strategies
@@ -216,6 +289,56 @@ $mapper->map(new OrderDTO(), OrderEntity::class);
 // Now all subsequent mappings use cache
 ```
 
+### 7. Optimize Array Mappings
+
+For large arrays, performance scales linearly with array size.
+
+**Slower**:
+```php
+class OrderDTO {
+    #[MapArray(OrderItem::class)]
+    public array $items = []; // 1000 items = 1000 map() calls
+}
+```
+
+**Optimization strategies**:
+
+1. **Batch processing**: Process large arrays in chunks
+```php
+$chunkSize = 100;
+foreach (array_chunk($orderDto->items, $chunkSize) as $chunk) {
+    $tempDto = new OrderDTO();
+    $tempDto->items = $chunk;
+    $order = $mapper->map($tempDto, Order::class);
+    // Process batch
+}
+```
+
+2. **Filter before mapping**: Reduce array size if possible
+```php
+// Filter out items before mapping
+$orderDto->items = array_filter(
+    $orderDto->items,
+    fn($item) => $item->isValid()
+);
+$order = $mapper->map($orderDto, Order::class);
+```
+
+3. **Lazy mapping**: Map arrays on-demand if not always needed
+```php
+class Order {
+    public array $itemsDto = [];  // Store DTOs
+
+    public function getItems(): array {
+        // Map only when accessed
+        return array_map(
+            fn($dto) => $mapper->map($dto, Item::class),
+            $this->itemsDto
+        );
+    }
+}
+```
+
 ## Memory Optimization
 
 ### Metadata Cache Size
@@ -320,6 +443,9 @@ Before optimizing, profile first! Common wins:
 - [ ] Use public properties over getters (if possible)
 - [ ] Batch operations and flush periodically
 - [ ] Use appropriate PropertyAccess configuration
+- [ ] Filter/reduce array sizes before mapping with `#[MapArray]`
+- [ ] Consider lazy mapping for large arrays that aren't always needed
+- [ ] Process large arrays in chunks for better memory management
 
 ## When NOT to Optimize
 

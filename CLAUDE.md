@@ -75,7 +75,7 @@ Simmap is a **symmetrical object mapper** library for PHP 8.1+. The key architec
 - Maintains in-memory cache: `array<string, MappingMetadata>`
 - Cache is per class name (not per instance) for memory efficiency
 - Processes both public and protected properties
-- Reads `#[MapTo]` and `#[Ignore]` attributes
+- Reads `#[MapTo]`, `#[MapArray]`, `#[Ignore]`, and `#[Mappable]` attributes
 
 **3. MappingMetadata (`src/Metadata/MappingMetadata.php`)**
 - Data container for all mapping information about a class
@@ -131,13 +131,16 @@ src/
 ├── MapperInterface.php     # Mapper contract
 ├── Attribute/
 │   ├── MapTo.php          # Attribute for custom property mapping
-│   └── Ignore.php         # Attribute to exclude properties
+│   ├── MapArray.php       # Attribute for array element mapping
+│   ├── Ignore.php         # Attribute to exclude properties
+│   └── Mappable.php       # Attribute to mark classes as mappable
 ├── Exception/
 │   └── MappingException.php  # Custom exceptions with factory methods
 └── Metadata/
     ├── MetadataReader.php     # Reflection-based attribute reader
     ├── MappingMetadata.php    # Metadata container with reverse index
-    └── PropertyMapping.php    # Single property mapping representation
+    ├── PropertyMapping.php    # Single property mapping representation
+    └── ArrayMapping.php       # Array property mapping representation
 ```
 
 ## Development Guidelines
@@ -215,6 +218,15 @@ This provides consistent error messages and easier testing.
 - Reflection data is immutable once class is loaded
 - Cached instance is reused for `hasProperty()` checks
 
+**Array mapping implementation:**
+- `#[MapArray(TargetClass::class)]` attribute specifies target element class
+- `ArrayMapping` metadata stores property name and target element class
+- `Mapper::mapArray()` recursively maps each array element using `map()`
+- Array keys are preserved (works with associative and indexed arrays)
+- Non-object values in arrays are preserved as-is (scalars, null, nested arrays)
+- Symmetrical mapping works automatically in both directions
+- Array mappings stored in `MappingMetadata::$arrayMappings` with O(1) lookup
+
 ## Common Development Tasks
 
 ### Adding a New Attribute
@@ -249,3 +261,4 @@ Comprehensive documentation is in the `docs/` directory:
 - **examples.md**: Real-world use cases (e-commerce, API mapping, CQRS, etc.)
 
 When making architectural changes, update the relevant documentation files.
+

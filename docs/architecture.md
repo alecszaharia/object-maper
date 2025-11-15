@@ -58,6 +58,7 @@ Simmap is built around a simple but powerful architecture with three main compon
 MappingMetadata {
     reflection: ReflectionClass         // Cached reflection
     propertyMappings: array             // Array of PropertyMapping objects
+    arrayMappings: array                // Array of ArrayMapping objects
     forwardMappingIndex: array          // source -> target index (O(1) lookup)
     reverseMappingIndex: array          // target -> source index (O(1) lookup)
     ignoredProperties: array            // Associative array for O(1) checks
@@ -81,16 +82,47 @@ PropertyMapping {
 }
 ```
 
-### 4. Attributes
+### 4. ArrayMapping (`src/Metadata/ArrayMapping.php`)
+
+**Responsibility**: Represents an array property mapping with element type transformation
+
+**Structure**:
+```php
+ArrayMapping {
+    propertyName: string      // Property name containing the array
+    targetElementClass: string // Fully qualified class name for array elements
+}
+```
+
+**Key Features**:
+- Enables automatic mapping of array elements from one type to another
+- Preserves array keys (both indexed and associative arrays)
+- Works symmetrically - bidirectional with single attribute definition
+- Recursively maps each object in the array using `Mapper::map()`
+- Non-object values (scalars, null, nested arrays) are preserved as-is
+
+### 5. Attributes
 
 #### `#[MapTo]` (`src/Attribute/MapTo.php`)
 - Marks explicit property mappings
 - Supports nested property paths
 - Works symmetrically (bidirectional)
+- Can be combined with `#[MapArray]` for renaming array properties
+
+#### `#[MapArray]` (`src/Attribute/MapArray.php`)
+- Specifies target class for array element mapping
+- Automatically maps each array element to the specified type
+- Works symmetrically in both directions
+- Preserves array keys (indexed and associative)
+- Can be combined with `#[MapTo]` to both rename property and map elements
 
 #### `#[Ignore]` (`src/Attribute/Ignore.php`)
 - Excludes properties from auto-mapping
 - Applied at property level
+
+#### `#[Mappable]` (`src/Attribute/Mappable.php`)
+- Marks classes as mappable (optional, for clarity)
+- Useful for documentation and IDE support in array mapping scenarios
 
 ## Mapping Algorithm
 
@@ -107,6 +139,8 @@ The mapping process follows this algorithm:
 
 3. For each source property:
    ├─ Skip if ignored in source metadata
+   ├─ Check if property has #[MapArray] attribute
+   │  └─ If yes: Map each array element to target class
    ├─ Resolve target property path:
    │  ├─ Check explicit #[MapTo] on source
    │  ├─ Check reverse mapping in target (symmetrical)
@@ -245,13 +279,44 @@ $mapper = new Mapper(null, new CachedMetadataReader());
 3. **Builder Pattern**: Reflection-based object construction
 4. **Registry Pattern**: Metadata registry with cache
 
+## Array Mapping Implementation
+
+The `#[MapArray]` attribute enables automatic collection mapping:
+
+**How It Works**:
+1. `MetadataReader` scans for `#[MapArray]` attributes during metadata reading
+2. Stores `ArrayMapping` objects in `MappingMetadata::$arrayMappings`
+3. During mapping, `Mapper::map()` checks if property has array mapping
+4. For each element in source array:
+   - If element is an object: recursively call `Mapper::map()` with target class
+   - If element is scalar/null/array: preserve as-is
+5. Array keys are preserved (works with both indexed and associative arrays)
+
+**Symmetrical Behavior**:
+```php
+// Source → Target
+class OrderDTO {
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
+class Order {
+    #[MapArray(OrderItemDTO::class)]
+    public array $items = [];
+}
+
+// Forward mapping: OrderDTO → Order (maps each OrderItemDTO → OrderItem)
+// Reverse mapping: Order → OrderDTO (maps each OrderItem → OrderItemDTO)
+```
+
+The reverse index automatically handles array mappings, making them fully bidirectional.
+
 ## Future Enhancements
 
 Potential areas for extension:
 
 - [ ] Custom transformers (e.g., date formatting)
 - [ ] Conditional mapping (e.g., `#[MapWhen]`)
-- [ ] Collection mapping (arrays of objects)
 - [ ] Circular reference detection
 - [ ] Mapping profiles/contexts
 - [ ] Event hooks (before/after mapping)

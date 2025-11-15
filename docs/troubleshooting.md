@@ -232,6 +232,196 @@ class UserEntity {
 }
 ```
 
+### Array Elements Not Being Mapped
+
+**Symptom**: Array property exists but elements are not transformed
+
+```php
+#[Mappable]
+class OrderDTO {
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
+$orderDto = new OrderDTO();
+$orderDto->items = [new ItemDTO(), new ItemDTO()];
+
+$order = $mapper->map($orderDto, Order::class);
+// $order->items still contains ItemDTO instances instead of OrderItem
+```
+
+#### Cause 1: Missing #[MapArray] Attribute
+
+**Solution**: Ensure both source and target have `#[MapArray]` with correct class
+```php
+#[Mappable]
+class OrderDTO {
+    #[MapArray(OrderItem::class)]  // ← Must specify target class
+    public array $items = [];
+}
+
+#[Mappable]
+class Order {
+    #[MapArray(ItemDTO::class)]    // ← For reverse mapping
+    public array $items = [];
+}
+```
+
+#### Cause 2: Wrong Target Class Name
+
+```php
+#[MapArray(OrderItem::class)]  // ❌ Wrong class name
+```
+
+**Solution**: Use fully qualified class name
+```php
+use App\Entity\OrderItem;
+
+#[MapArray(OrderItem::class)]  // ✅ Correct
+// or
+#[MapArray(\App\Entity\OrderItem::class)]  // ✅ Also correct
+```
+
+#### Cause 3: Missing #[Mappable] Attribute
+
+While `#[Mappable]` is optional, it's recommended for clarity:
+
+```php
+#[Mappable]  // ← Recommended for array element classes
+class ItemDTO {
+    public string $name;
+}
+
+#[Mappable]
+class OrderItem {
+    public string $name;
+}
+```
+
+### Array Keys Not Preserved
+
+**Symptom**: Associative array loses its keys
+
+```php
+$dto->items = ['sku-001' => $item1, 'sku-002' => $item2];
+$entity = $mapper->map($dto, Entity::class);
+// $entity->items has numeric keys [0, 1] instead of ['sku-001', 'sku-002']
+```
+
+**Cause**: This shouldn't happen - `#[MapArray]` preserves keys by default
+
+**Debug**:
+```php
+// Check before mapping
+var_dump(array_keys($dto->items));
+
+// Check after mapping
+var_dump(array_keys($entity->items));
+```
+
+**Solution**: If keys are lost, verify:
+1. Source array actually has the keys you expect
+2. No manual array manipulation happening
+3. Using `#[MapArray]` (not manual array_map)
+
+### Large Array Performance Issues
+
+**Symptom**: Mapping is slow with large arrays
+
+```php
+#[MapArray(Item::class)]
+public array $items = [];  // 10,000 items
+
+$order = $mapper->map($orderDto, Order::class);  // Takes seconds
+```
+
+**Explanation**: Array mapping scales linearly - 10,000 items = 10,000 `map()` calls
+
+**Solutions**:
+
+1. **Process in chunks**:
+```php
+$chunkSize = 1000;
+foreach (array_chunk($orderDto->items, $chunkSize) as $chunk) {
+    $tempDto = new OrderDTO();
+    $tempDto->items = $chunk;
+    $tempOrder = $mapper->map($tempDto, Order::class);
+    // Process chunk
+}
+```
+
+2. **Filter unnecessary items**:
+```php
+$orderDto->items = array_filter(
+    $orderDto->items,
+    fn($item) => $item->isActive()
+);
+$order = $mapper->map($orderDto, Order::class);
+```
+
+3. **Use lazy loading**:
+```php
+class Order {
+    private array $itemDtos = [];
+
+    public function setItems(array $items): void {
+        $this->itemDtos = $items;  // Store DTOs
+    }
+
+    public function getItems(): array {
+        // Map on-demand
+        static $mapped = null;
+        if ($mapped === null) {
+            $mapped = array_map(
+                fn($dto) => $this->mapper->map($dto, Item::class),
+                $this->itemDtos
+            );
+        }
+        return $mapped;
+    }
+}
+```
+
+See [Performance Guide - Optimize Array Mappings](performance.md#7-optimize-array-mappings) for more strategies.
+
+### Mixed Array Content Behavior
+
+**Symptom**: Confused about how non-object values are handled
+
+```php
+$dto->data = [
+    new ItemDTO(),      // Object
+    'string value',     // Scalar
+    42,                 // Number
+    null,               // Null
+    ['nested']          // Array
+];
+
+$entity = $mapper->map($dto, Entity::class);
+```
+
+**Expected Behavior**:
+- **Objects**: Mapped to target class
+- **Scalars** (strings, numbers, bools): Preserved as-is
+- **Null**: Preserved as-is
+- **Nested arrays**: Preserved as-is
+
+This is intentional - only objects are mapped, everything else passes through unchanged.
+
+**If you need different behavior**:
+```php
+// Pre-filter to only objects
+$dto->data = array_filter($dto->data, 'is_object');
+
+// Or convert scalars before mapping
+$dto->data = array_map(function($item) {
+    if (is_string($item)) {
+        return new ItemDTO(['value' => $item]);
+    }
+    return $item;
+}, $dto->data);
+```
+
 ### Null Values Being Transferred
 
 **Symptom**: Null values overwrite existing data
@@ -522,6 +712,9 @@ class MapperTest extends TestCase
 | Cannot access property | Property not writable | Add setter or make public |
 | Property not found | Property doesn't exist | Check spelling or add #[MapTo] |
 | Uninitialized property | Property not set | Initialize before mapping |
+| Array elements not mapped | Missing #[MapArray] | Add attribute with target class |
+| Wrong array element type | Wrong class in #[MapArray] | Use correct fully qualified class name |
+| Large array slow | Too many elements | Process in chunks or filter |
 
 ## Preventive Measures
 
