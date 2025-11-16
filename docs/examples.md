@@ -4,7 +4,7 @@ This document provides real-world examples and advanced use cases for Simmap.
 
 ## Important Note
 
-**All classes that participate in mapping must be marked with the `#[Mappable]` attribute.** This is a required security feature that provides explicit opt-in control. All examples in this document already include this attribute.
+**All classes that participate in mapping must be marked with the `#[Mappable]` attribute.** This is a required security feature that provides explicit opt-in control. 
 
 ```php
 use Alecszaharia\Simmap\Attribute\Mappable;
@@ -40,9 +40,11 @@ Add #[Mappable] attribute to the class to enable mapping.
 ```php
 use Alecszaharia\Simmap\Attribute\MapTo;
 use Alecszaharia\Simmap\Attribute\Ignore;
+use Alecszaharia\Simmap\Attribute\Mappable;
 use Alecszaharia\Simmap\Mapper;
 
 // API Input DTO
+#[Mappable]
 class CreateProductRequest
 {
     public string $name;
@@ -68,6 +70,7 @@ class CreateProductRequest
 }
 
 // Domain Entities
+#[Mappable]
 class Product
 {
     public string $name;
@@ -84,17 +87,20 @@ class Product
     }
 }
 
+#[Mappable]
 class Price
 {
     public float $amount;
     public string $currency = 'USD';
 }
 
+#[Mappable]
 class Category
 {
     public string $name;
 }
 
+#[Mappable]
 class Inventory
 {
     public int $stock;
@@ -126,6 +132,7 @@ class ProductController
 ### Reverse: Entity to API Response
 
 ```php
+#[Mappable]
 class ProductResponse
 {
     public string $name;
@@ -154,6 +161,7 @@ return new JsonResponse($responseDto);
 ### Complex nested user structure
 
 ```php
+#[Mappable]
 class UserProfileDTO
 {
     // Basic info
@@ -192,6 +200,7 @@ class UserProfileDTO
     public string $theme;
 }
 
+#[Mappable]
 class User
 {
     public string $firstName;
@@ -207,6 +216,7 @@ class User
     }
 }
 
+#[Mappable]
 class ContactInfo
 {
     public Address $address;
@@ -219,6 +229,7 @@ class ContactInfo
     }
 }
 
+#[Mappable]
 class Address
 {
     public string $street;
@@ -227,12 +238,14 @@ class Address
     public string $country;
 }
 
+#[Mappable]
 class Phone
 {
     public string $number;
     public string $type = 'mobile';
 }
 
+#[Mappable]
 class UserPreferences
 {
     public bool $newsletter = false;
@@ -250,6 +263,7 @@ $user = $mapper->map($profileDto, User::class);
 
 ```php
 // POST /api/orders - Create order
+#[Mappable]
 class CreateOrderRequest
 {
     public int $customerId;
@@ -265,6 +279,7 @@ class CreateOrderRequest
 }
 
 // GET /api/orders/{id} - Order response
+#[Mappable]
 class OrderResponse
 {
     public int $id;
@@ -284,6 +299,7 @@ class OrderResponse
     public array $items = []; // Populated separately
 }
 
+#[Mappable]
 class Order
 {
     public int $id;
@@ -328,6 +344,7 @@ class OrderController
 ### Symfony Form to Entity mapping
 
 ```php
+#[Mappable]
 class RegistrationFormData
 {
     public string $username;
@@ -346,6 +363,7 @@ class RegistrationFormData
     public bool $agreeToTerms = false;
 }
 
+#[Mappable]
 class User
 {
     public string $username;
@@ -361,6 +379,7 @@ class User
     }
 }
 
+#[Mappable]
 class UserProfile
 {
     public string $firstName;
@@ -405,6 +424,7 @@ class RegistrationController
 ### Enterprise organization structure
 
 ```php
+#[Mappable]
 class OrganizationDTO
 {
     public string $name;
@@ -436,6 +456,7 @@ class OrganizationDTO
     public string $room;
 }
 
+#[Mappable]
 class Organization
 {
     public string $name;
@@ -449,6 +470,7 @@ class Organization
     }
 }
 
+#[Mappable]
 class Department
 {
     public string $name;
@@ -460,6 +482,7 @@ class Department
     }
 }
 
+#[Mappable]
 class Team
 {
     public string $name;
@@ -471,6 +494,7 @@ class Team
     }
 }
 
+#[Mappable]
 class Manager
 {
     public string $firstName;
@@ -478,6 +502,7 @@ class Manager
     public string $email;
 }
 
+#[Mappable]
 class Location
 {
     public Office $office;
@@ -488,6 +513,7 @@ class Location
     }
 }
 
+#[Mappable]
 class Office
 {
     public string $building;
@@ -504,6 +530,7 @@ $org = $mapper->map($dto, Organization::class);
 ### Update only specific fields
 
 ```php
+#[Mappable]
 class UpdateUserRequest
 {
     public ?string $email = null;
