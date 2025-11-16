@@ -11,6 +11,7 @@ This guide covers common issues, error messages, and their solutions.
 #### Cause 1: Property is Uninitialized
 
 ```php
+#[Mappable]
 class UserDTO {
     public string $name; // Not initialized!
 }
@@ -28,6 +29,7 @@ $dto->name = 'John'; // Initialize before mapping
 
 Or use default values:
 ```php
+#[Mappable]
 class UserDTO {
     public string $name = ''; // Default value
 }
@@ -36,6 +38,7 @@ class UserDTO {
 #### Cause 2: Property is Ignored
 
 ```php
+#[Mappable]
 class UserDTO {
     #[Ignore]
     public string $name;
@@ -47,10 +50,12 @@ class UserDTO {
 #### Cause 3: Target Property Doesn't Exist
 
 ```php
+#[Mappable]
 class SourceDTO {
     public string $userName; // Source has 'userName'
 }
 
+#[Mappable]
 class TargetEntity {
     public string $name; // Target has 'name' (different!)
 }
@@ -58,6 +63,7 @@ class TargetEntity {
 
 **Solution**: Add explicit mapping
 ```php
+#[Mappable]
 class SourceDTO {
     #[MapTo('name')]
     public string $userName;
@@ -67,6 +73,7 @@ class SourceDTO {
 #### Cause 4: Property is Not Writable
 
 ```php
+#[Mappable]
 class TargetEntity {
     private string $name; // No setter!
 }
@@ -74,6 +81,7 @@ class TargetEntity {
 
 **Solution**: Add a setter or make property public
 ```php
+#[Mappable]
 class TargetEntity {
     private string $name;
 
@@ -88,11 +96,13 @@ class TargetEntity {
 **Symptom**: Error or null value when mapping to nested path
 
 ```php
+#[Mappable]
 class PersonDTO {
     #[MapTo('address.city')]
     public string $city;
 }
 
+#[Mappable]
 class Person {
     public ?Address $address = null; // NULL!
 }
@@ -102,6 +112,7 @@ class Person {
 
 **Solution**: Initialize nested objects in constructor
 ```php
+#[Mappable]
 class Person {
     public Address $address;
 
@@ -189,8 +200,8 @@ $mapper->map($dto, true);
 $mapper->map($dto, ['class' => Entity::class]);
 
 // ✅ Do
-$mapper->map($dto, Entity::class);
-$mapper->map($dto, new Entity());
+$mapper->map($dto, Entity::class);      // Class name string
+$mapper->map($dto, new Entity());      // Object instance
 ```
 
 ### MappingException: Property Access Error
@@ -207,6 +218,7 @@ The property "readOnly" in class "App\Entity\User" is not writable.
 
 1. Add a setter method:
 ```php
+#[Mappable]
 class User {
     private string $readOnly;
 
@@ -218,6 +230,7 @@ class User {
 
 2. Make property public:
 ```php
+#[Mappable]
 class User {
     public string $readOnly;
 }
@@ -225,6 +238,7 @@ class User {
 
 3. Use `#[Ignore]` on source if property shouldn't be mapped:
 ```php
+#[Mappable]
 class DTO {
     #[Ignore]
     public string $readOnly;
@@ -236,11 +250,13 @@ class DTO {
 **Symptom**: Forward mapping works, but reverse doesn't
 
 ```php
+#[Mappable]
 class UserDTO {
     #[MapTo('fullName')]
     public string $name;
 }
 
+#[Mappable]
 class UserEntity {
     public string $fullName;
 }
@@ -261,6 +277,7 @@ $dto = $mapper->map($entity, UserDTO::class);
 **Debug**:
 ```php
 // Add explicit reverse mapping if needed
+#[Mappable]
 class UserEntity {
     #[MapTo('name')]
     public string $fullName;
@@ -317,17 +334,17 @@ use App\Entity\OrderItem;
 #[MapArray(\App\Entity\OrderItem::class)]  // ✅ Also correct
 ```
 
-#### Cause 3: Missing #[Mappable] Attribute
+#### Cause 3: Missing #[Mappable] on Array Element Classes
 
-While `#[Mappable]` is optional, it's recommended for clarity:
+The array element classes must also have `#[Mappable]`:
 
 ```php
-#[Mappable]  // ← Recommended for array element classes
+#[Mappable]  // ← Required for array element classes
 class ItemDTO {
     public string $name;
 }
 
-#[Mappable]
+#[Mappable]  // ← Required for array element classes
 class OrderItem {
     public string $name;
 }
@@ -376,6 +393,12 @@ $order = $mapper->map($orderDto, Order::class);  // Takes seconds
 
 1. **Process in chunks**:
 ```php
+#[Mappable]
+class OrderDTO {
+    #[MapArray(Item::class)]
+    public array $items = [];
+}
+
 $chunkSize = 1000;
 foreach (array_chunk($orderDto->items, $chunkSize) as $chunk) {
     $tempDto = new OrderDTO();
@@ -396,6 +419,7 @@ $order = $mapper->map($orderDto, Order::class);
 
 3. **Use lazy loading**:
 ```php
+#[Mappable]
 class Order {
     private array $itemDtos = [];
 
@@ -424,6 +448,13 @@ See [Performance Guide - Optimize Array Mappings](performance.md#7-optimize-arra
 **Symptom**: Confused about how non-object values are handled
 
 ```php
+#[Mappable]
+class MixedDTO {
+    #[MapArray(Item::class)]
+    public array $data = [];
+}
+
+$dto = new MixedDTO();
 $dto->data = [
     new ItemDTO(),      // Object
     'string value',     // Scalar
@@ -476,6 +507,7 @@ $mapper->map($dto, $existingEntity);
 
 **Solution**: Filter null values before mapping
 ```php
+#[Mappable]
 class UserDTO {
     public ?string $name = null;
 
@@ -559,12 +591,14 @@ Simmap itself should use < 10KB per mapping.
 **Solution**: Reduce nesting depth
 ```php
 // ❌ Slow
+#[Mappable]
 class DTO {
     #[MapTo('user.profile.settings.preferences.theme')]
     public string $theme;
 }
 
 // ✅ Faster
+#[Mappable]
 class DTO {
     #[MapTo('theme')]
     public string $theme;
@@ -585,6 +619,11 @@ ini_set('display_errors', '1');
 ### 2. Check What's Being Mapped
 
 ```php
+#[Mappable]
+class UserDTO {
+    public string $name = 'John';
+}
+
 $source = new UserDTO();
 echo "Source properties:\n";
 print_r(get_object_vars($source));
@@ -617,6 +656,11 @@ print_r($metadata->ignoredProperties);
 use Symfony\Component\PropertyAccess\PropertyAccess;
 
 $accessor = PropertyAccess::createPropertyAccessor();
+
+#[Mappable]
+class UserEntity {
+    public string $name;
+}
 
 $entity = new UserEntity();
 
@@ -673,6 +717,11 @@ services:
 
 **Solution**: Flush entity manager
 ```php
+#[Mappable]
+class User {
+    public string $name;
+}
+
 $entity = $entityManager->find(User::class, 1);
 $mapper->map($dto, $entity);
 $entityManager->flush(); // Don't forget!

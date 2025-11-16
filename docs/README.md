@@ -169,7 +169,9 @@ Use the `#[MapArray]` attribute for automatic array element mapping:
 
 ```php
 use Alecszaharia\Simmap\Attribute\MapArray;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class OrderDTO {
     #[MapArray(OrderItem::class)]
     public array $items = [];
@@ -199,6 +201,11 @@ $entities = array_map(
 Yes! Just pass the instance instead of a class name:
 
 ```php
+#[Mappable]
+class UserEntity {
+    public string $name;
+}
+
 $existingEntity = $repository->find($id);
 $mapper->map($dto, $existingEntity);
 ```
@@ -214,12 +221,22 @@ See [Troubleshooting - Null Values](troubleshooting.md#null-values-being-transfe
 Validate before mapping:
 
 ```php
+#[Mappable]
+class UserDTO {
+    public string $name;
+}
+
+#[Mappable]
+class User {
+    public string $name;
+}
+
 $violations = $validator->validate($dto);
 if (count($violations) > 0) {
     throw new ValidationException($violations);
 }
 
-$entity = $mapper->map($dto, Entity::class);
+$entity = $mapper->map($dto, User::class);
 ```
 
 ### Is it thread-safe?

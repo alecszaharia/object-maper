@@ -51,13 +51,16 @@ Typical mapping times (10 properties):
 require 'vendor/autoload.php';
 
 use Alecszaharia\Simmap\Mapper;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class SourceDTO {
     public string $name = 'John';
     public string $email = 'john@example.com';
     public int $age = 30;
 }
 
+#[Mappable]
 class TargetEntity {
     public string $name;
     public string $email;
@@ -205,6 +208,7 @@ $mapper->map($dto, $entity); // Reuses existing instance
 
 **Slower**:
 ```php
+#[Mappable]
 class DTO {
     #[MapTo('user.profile.address.city.name')]
     public string $cityName;
@@ -213,6 +217,7 @@ class DTO {
 
 **Faster**:
 ```php
+#[Mappable]
 class DTO {
     #[MapTo('city')]  // Direct property
     public string $city;
@@ -225,6 +230,7 @@ class DTO {
 
 **Slower**:
 ```php
+#[Mappable]
 class DTO {
     public string $name;     // Uninitialized
     public string $email;    // Uninitialized
@@ -237,6 +243,7 @@ $entity = $mapper->map($dto, Entity::class);
 
 **Faster**:
 ```php
+#[Mappable]
 class DTO {
     public string $name = '';
     public string $email = '';
@@ -258,6 +265,7 @@ PropertyAccess checks in this order:
 
 **Fastest**:
 ```php
+#[Mappable]
 class DTO {
     public string $name; // Direct access
 }
@@ -265,6 +273,7 @@ class DTO {
 
 **Slower**:
 ```php
+#[Mappable]
 class DTO {
     private string $name;
 
@@ -295,6 +304,7 @@ For large arrays, performance scales linearly with array size.
 
 **Slower**:
 ```php
+#[Mappable]
 class OrderDTO {
     #[MapArray(OrderItem::class)]
     public array $items = []; // 1000 items = 1000 map() calls
@@ -305,6 +315,12 @@ class OrderDTO {
 
 1. **Batch processing**: Process large arrays in chunks
 ```php
+#[Mappable]
+class OrderDTO {
+    #[MapArray(OrderItem::class)]
+    public array $items = [];
+}
+
 $chunkSize = 100;
 foreach (array_chunk($orderDto->items, $chunkSize) as $chunk) {
     $tempDto = new OrderDTO();
@@ -326,6 +342,7 @@ $order = $mapper->map($orderDto, Order::class);
 
 3. **Lazy mapping**: Map arrays on-demand if not always needed
 ```php
+#[Mappable]
 class Order {
     public array $itemsDto = [];  // Store DTOs
 
@@ -465,6 +482,20 @@ Only optimize if:
 ### Typical Symfony Controller
 
 ```php
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class UserDTO {
+    public string $name;
+    public string $email;
+}
+
+#[Mappable]
+class User {
+    public string $name;
+    public string $email;
+}
+
 #[Route('/api/users', methods: ['POST'])]
 public function create(Request $request, Mapper $mapper): Response
 {

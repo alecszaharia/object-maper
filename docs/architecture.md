@@ -165,12 +165,14 @@ The "symmetrical" aspect is achieved through **dual index lookups** - both forwa
 
 ```php
 // DTO class
+#[Mappable]
 class UserDTO {
     #[MapTo('fullName')]
     public string $name;
 }
 
 // Entity class
+#[Mappable]
 class UserEntity {
     public string $fullName;
 }
@@ -303,11 +305,13 @@ The `#[MapArray]` attribute enables automatic collection mapping:
 **Symmetrical Behavior**:
 ```php
 // Source → Target
+#[Mappable]
 class OrderDTO {
     #[MapArray(OrderItem::class)]
     public array $items = [];
 }
 
+#[Mappable]
 class Order {
     #[MapArray(OrderItemDTO::class)]
     public array $items = [];
