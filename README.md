@@ -2,6 +2,8 @@
 
 A powerful PHP object mapper library with attribute-based configuration for Symfony projects. Maps DTOs to Entities (or any other classes) with support for symmetrical bidirectional mapping and nested property paths.
 
+IMPORTANT: This is an AI generated object mapper keep this in mind.
+
 ## Features
 
 - **Attribute-based Configuration**: Use PHP 8.1+ attributes to define mappings
