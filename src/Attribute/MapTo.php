@@ -11,6 +11,7 @@ use Attribute;
  * The targetProperty parameter can use PropertyAccess notation for nested properties.
  *
  * Examples:
+ *   #[MapTo]              - Maps to simple property defaulting to the same name
  *   #[MapTo('name')]              - Maps to simple property
  *   #[MapTo('user.name')]         - Maps to nested property
  *   #[MapTo('address.city.name')] - Maps to deeply nested property
@@ -18,8 +19,7 @@ use Attribute;
 #[Attribute(Attribute::TARGET_PROPERTY)]
 class MapTo
 {
-    public function __construct(
-        public readonly string $targetProperty
-    ) {
+    public function __construct(public readonly ?string $targetProperty = null)
+    {
     }
 }

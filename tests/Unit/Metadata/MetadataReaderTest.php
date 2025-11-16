@@ -30,6 +30,13 @@ class MetadataReaderTest extends TestCase
 
         $this->assertSame('targetName', $metadata->findTargetProperty('name'));
     }
+    public function testReadsMapToAttributeWithNullTargetProperty(): void
+    {
+        $reader = new MetadataReader();
+        $metadata = $reader->getMetadata(ClassWithMapToDefaultToPropertyName::class);
+
+        $this->assertSame('name', $metadata->findTargetProperty('name'));
+    }
 
     public function testReadsIgnoreAttribute(): void
     {
@@ -91,6 +98,13 @@ class NonMappableTestClass
 class ClassWithMapTo
 {
     #[MapTo('targetName')]
+    public string $name;
+}
+
+#[Mappable]
+class ClassWithMapToDefaultToPropertyName
+{
+    #[MapTo]
     public string $name;
 }
 

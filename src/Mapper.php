@@ -185,6 +185,7 @@ class Mapper implements MapperInterface
      * @param array $sourceArray The array of source objects
      * @param string $targetClass The target class to map each element to
      * @return array The mapped array with same keys
+     * @throws MappingException
      */
     private function mapArray(array $sourceArray, string $targetClass): array
     {

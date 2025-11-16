@@ -82,7 +82,7 @@ class MetadataReader
         if (!empty($mapToAttributes)) {
             /** @var MapTo $mapTo */
             $mapTo = $mapToAttributes[0]->newInstance();
-            $metadata->addMapping(new PropertyMapping($propertyName, $mapTo->targetProperty));
+            $metadata->addMapping(new PropertyMapping($propertyName, $mapTo->targetProperty?:$propertyName));
         }
     }
 

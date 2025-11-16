@@ -58,6 +58,8 @@ make php CMD="path/to/script.php"
 
 Simmap is a **symmetrical object mapper** library for PHP 8.1+. The key architectural concept is **bidirectional mapping** - a single mapping definition works in both directions (A→B and B→A).
 
+**IMPORTANT**: All classes participating in mapping (both source and target) **must** be marked with the `#[Mappable]` attribute. This is a required type safety mechanism that provides explicit opt-in control. Attempting to map classes without this attribute will throw `MappingException::notMappable()`.
+
 ### Core Components
 
 **1. Mapper (`src/Mapper.php`)**
@@ -74,7 +76,8 @@ Simmap is a **symmetrical object mapper** library for PHP 8.1+. The key architec
 - Scans classes using PHP Reflection API to extract attribute metadata
 - Maintains in-memory cache: `array<string, MappingMetadata>`
 - Cache is per class name (not per instance) for memory efficiency
-- Processes both public and protected properties
+- **Validates `#[Mappable]` attribute presence** - skips property processing for non-mappable classes
+- Processes both public and protected properties when class is mappable
 - Reads `#[MapTo]`, `#[MapArray]`, `#[Ignore]`, and `#[Mappable]` attributes
 
 **3. MappingMetadata (`src/Metadata/MappingMetadata.php`)**
@@ -204,6 +207,20 @@ This provides consistent error messages and easier testing.
 
 ### Key Implementation Details
 
+**#[Mappable] attribute requirement:**
+- **REQUIRED** on both source AND target classes for mapping to work
+- Provides explicit opt-in control - prevents accidental mapping of domain objects
+- Type safety mechanism: ensures only classes designed for mapping participate
+- Class-level attribute (not property-level): `#[Mappable]` above the class definition
+- Validation happens at mapping time in `Mapper::map()`:
+  - Checks `$sourceMetadata->isMappable` and `$targetMetadata->isMappable`
+  - Throws `MappingException::notMappable()` if either class lacks the attribute
+- MetadataReader behavior when class lacks `#[Mappable]`:
+  - Sets `$metadata->isMappable = false`
+  - Skips property processing entirely (optimization)
+  - Returns empty metadata (no mappings, no ignored properties)
+- Example error message: `Class "UserDTO" cannot be used as source for mapping. Add #[Mappable] attribute to the class to enable mapping.`
+
 **Why skip read errors but throw on write errors?**
 - Source objects may be partially populated (uninitialized properties are valid)
 - Target mappings should be well-defined (write failures indicate configuration issues)
@@ -228,6 +245,27 @@ This provides consistent error messages and easier testing.
 - Array mappings stored in `MappingMetadata::$arrayMappings` with O(1) lookup
 
 ## Common Development Tasks
+
+### Creating Mappable Classes
+
+When creating new classes for use with Simmap:
+
+1. **Always add `#[Mappable]` attribute** to the class (required for both DTOs and entities)
+2. Import the attribute: `use Alecszaharia\Simmap\Attribute\Mappable;`
+3. Add property-level attributes as needed: `#[MapTo]`, `#[MapArray]`, `#[Ignore]`
+
+Example:
+```php
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class UserDTO {
+    public string $name;
+    public string $email;
+}
+```
+
+**Important**: Both source AND target classes need `#[Mappable]` for mapping to work
 
 ### Adding a New Attribute
 
@@ -261,4 +299,3 @@ Comprehensive documentation is in the `docs/` directory:
 - **examples.md**: Real-world use cases (e-commerce, API mapping, CQRS, etc.)
 
 When making architectural changes, update the relevant documentation files.
-
