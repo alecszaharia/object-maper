@@ -91,9 +91,9 @@ composer update
 Security patches will be:
 
 1. Released as patch versions (e.g., 1.0.1)
-2. Documented in CHANGELOG.md with `[SECURITY]` tag
-3. Announced in release notes
-4. Tagged with security advisory if severe
+2. Documented in GitHub release notes with `[SECURITY]` tag
+3. Tagged with security advisory if severe
+4. Announced on the repository's security advisories page
 
 ## Vulnerability History
 

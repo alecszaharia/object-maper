@@ -121,8 +121,11 @@ ArrayMapping {
 - Applied at property level
 
 #### `#[Mappable]` (`src/Attribute/Mappable.php`)
-- Marks classes as mappable (optional, for clarity)
-- Useful for documentation and IDE support in array mapping scenarios
+- **Required** - Marks classes as eligible for mapping
+- Both source and target classes must have this attribute
+- Provides explicit opt-in control over which classes can participate in mapping
+- Prevents accidental mapping of classes not designed for it
+- Throws `MappingException::notMappable()` if either class is missing this attribute
 
 ## Mapping Algorithm
 
@@ -137,7 +140,12 @@ The mapping process follows this algorithm:
    └─ Cache hit: Return cached metadata
    └─ Cache miss: Read attributes, build metadata, cache
 
-3. For each source property:
+3. Validate #[Mappable] attribute
+   ├─ Check source class has #[Mappable]
+   ├─ Check target class has #[Mappable]
+   └─ Throw MappingException if either is missing
+
+4. For each source property:
    ├─ Skip if ignored in source metadata
    ├─ Check if property has #[MapArray] attribute
    │  └─ If yes: Map each array element to target class
@@ -148,7 +156,7 @@ The mapping process follows this algorithm:
    ├─ Read value from source (skip on error)
    └─ Write value to target (throw on error)
 
-4. Return mapped target object
+5. Return mapped target object
 ```
 
 ## Symmetrical Mapping

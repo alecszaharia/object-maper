@@ -11,7 +11,6 @@ New to Simmap? Start with the main [README](../README.md) for installation and b
 ### Core Documentation
 
 - **[README](../README.md)** - Installation, basic usage, and quick start
-- **[CHANGELOG](../CHANGELOG.md)** - Version history and release notes
 - **[LICENSE](../LICENSE)** - MIT license terms
 - **[CONTRIBUTING](../CONTRIBUTING.md)** - How to contribute to Simmap
 - **[SECURITY](../SECURITY.md)** - Security policy and reporting vulnerabilities
@@ -51,8 +50,21 @@ New to Simmap? Start with the main [README](../README.md) for installation and b
 
 ### Basic Mapping
 
+**Important**: Classes must be marked with `#[Mappable]` attribute.
+
 ```php
 use Alecszaharia\Simmap\Mapper;
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class DTO {
+    public string $name;
+}
+
+#[Mappable]
+class Entity {
+    public string $name;
+}
 
 $mapper = new Mapper();
 $entity = $mapper->map($dto, Entity::class);
@@ -62,7 +74,9 @@ $entity = $mapper->map($dto, Entity::class);
 
 ```php
 use Alecszaharia\Simmap\Attribute\MapTo;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class DTO {
     #[MapTo('targetProperty')]
     public string $sourceProperty;
@@ -72,6 +86,9 @@ class DTO {
 ### Nested Property Mapping
 
 ```php
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
 class DTO {
     #[MapTo('user.address.city')]
     public string $city;
@@ -82,7 +99,9 @@ class DTO {
 
 ```php
 use Alecszaharia\Simmap\Attribute\Ignore;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class DTO {
     #[Ignore]
     public string $internalData;
@@ -238,7 +257,7 @@ We welcome contributions! See [CONTRIBUTING.md](../CONTRIBUTING.md) for:
 
 ## Version History
 
-See [CHANGELOG.md](../CHANGELOG.md) for detailed version history.
+See the [Releases page](https://github.com/alecszaharia/simmap/releases) for version history and release notes.
 
 ## License
 

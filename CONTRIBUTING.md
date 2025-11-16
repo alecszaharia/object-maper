@@ -50,6 +50,7 @@ Common commands:
 - `make test-file FILE=tests/Unit/MapperTest.php` - Run specific test file
 - `make test-filter FILTER=testMethodName` - Run specific test method
 - `make test-coverage` - Run tests with coverage report
+- `make benchmark` - Run performance benchmarks
 - `make example` - Run the basic usage example
 - `make clean` - Clean cache and temporary files
 
@@ -111,16 +112,15 @@ public function testMapperMapsPropertiesCorrectly(): void
 
 - Update README.md if adding new features or changing behavior
 - Add examples for new functionality
-- Update CHANGELOG.md following [Keep a Changelog](https://keepachangelog.com/en/1.0.0/) format
 - Include PHPDoc comments for public APIs
+- Update relevant documentation in the `docs/` directory
 
 ## Pull Request Process
 
 1. Update documentation reflecting your changes
-2. Add entry to CHANGELOG.md under `[Unreleased]` section
-3. Ensure all tests pass and code follows standards
-4. Push to your fork and create a Pull Request
-5. Fill in the PR template with:
+2. Ensure all tests pass and code follows standards
+3. Push to your fork and create a Pull Request
+4. Fill in the PR template with:
    - Description of changes
    - Motivation and context
    - Type of change (bugfix, feature, breaking change)
@@ -171,9 +171,8 @@ Maintainers will:
 
 1. Review and merge PRs
 2. Update version numbers following SemVer
-3. Update CHANGELOG.md with release date
-4. Create GitHub release with notes
-5. Publish to Packagist
+3. Create GitHub release with detailed release notes
+4. Publish to Packagist
 
 ## License
 

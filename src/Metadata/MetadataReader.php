@@ -44,8 +44,10 @@ class MetadataReader
         $metadata = new MappingMetadata($className, [], [], $reflection, $isMappable);
 
         // Get all properties including inherited ones
-        foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC | ReflectionProperty::IS_PROTECTED) as $property) {
-            $this->processProperty($property, $metadata);
+        if ($isMappable) {
+            foreach ($reflection->getProperties(ReflectionProperty::IS_PUBLIC | ReflectionProperty::IS_PROTECTED) as $property) {
+                $this->processProperty($property, $metadata);
+            }
         }
 
         $this->cache[$className] = $metadata;

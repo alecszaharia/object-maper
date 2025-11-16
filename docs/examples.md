@@ -2,6 +2,25 @@
 
 This document provides real-world examples and advanced use cases for Simmap.
 
+## Important Note
+
+**All classes that participate in mapping must be marked with the `#[Mappable]` attribute.** This is a required security feature that provides explicit opt-in control. All examples in this document already include this attribute.
+
+```php
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]  // ← Required on both source and target
+class YourClass {
+    // ...
+}
+```
+
+Without `#[Mappable]`, attempting to map will throw:
+```
+MappingException: Class "YourClass" cannot be used as source for mapping.
+Add #[Mappable] attribute to the class to enable mapping.
+```
+
 ## Table of Contents
 
 - [E-commerce Product Management](#e-commerce-product-management)
@@ -1337,19 +1356,19 @@ class ProductListQuery
 
 ## Best Practices from Examples
 
-1. **Always initialize nested objects** in constructors
-2. **Use #[Ignore] for metadata** that shouldn't be persisted
-3. **Use #[MapArray] for array properties** - automatic element mapping with symmetry support
-4. **Preserve array keys** - `#[MapArray]` maintains both indexed and associative keys
-5. **Create helper methods** for common patterns (bulk mapping, non-null mapping)
-6. **Separate request/response DTOs** even if similar structure
-7. **Map at service boundaries** (controller → service → repository)
-8. **Use mapper in both directions** for symmetry
-9. **Keep DTOs flat**, entities nested (combine with `#[MapArray]` for collections)
-10. **Validate before mapping** for security
-11. **Map to existing instances** for updates
-12. **Combine #[MapArray] with #[MapTo]** to both rename properties and map array elements
-13. **Use #[Mappable]** attribute on all classes involved in array mapping for clarity
+1. **Always mark classes with #[Mappable]** - Required on both source and target classes
+2. **Always initialize nested objects** in constructors
+3. **Use #[Ignore] for metadata** that shouldn't be persisted
+4. **Use #[MapArray] for array properties** - automatic element mapping with symmetry support
+5. **Preserve array keys** - `#[MapArray]` maintains both indexed and associative keys
+6. **Create helper methods** for common patterns (bulk mapping, non-null mapping)
+7. **Separate request/response DTOs** even if similar structure
+8. **Map at service boundaries** (controller → service → repository)
+9. **Use mapper in both directions** for symmetry
+10. **Keep DTOs flat**, entities nested (combine with `#[MapArray]` for collections)
+11. **Validate before mapping** for security
+12. **Map to existing instances** for updates
+13. **Combine #[MapArray] with #[MapTo]** to both rename properties and map array elements
 
 ## Performance Tips from Real Usage
 

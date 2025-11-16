@@ -111,6 +111,41 @@ class Person {
 }
 ```
 
+### MappingException: Class Not Mappable
+
+**Error Message**:
+```
+Class "App\DTO\UserDTO" cannot be used as source for mapping.
+Add #[Mappable] attribute to the class to enable mapping.
+```
+
+**Cause**: The source or target class is missing the required `#[Mappable]` attribute
+
+**Solution**: Add `#[Mappable]` to both source and target classes
+```php
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+// ❌ Don't - Missing attribute
+class UserDTO {
+    public string $name;
+}
+
+// ✅ Do - Has required attribute
+#[Mappable]
+class UserDTO {
+    public string $name;
+}
+
+#[Mappable]
+class UserEntity {
+    public string $name;
+}
+
+$mapper->map($dto, UserEntity::class); // Now works!
+```
+
+This is a **required** security feature that provides explicit opt-in control over which classes can participate in mapping operations.
+
 ### MappingException: Cannot Create Instance
 
 **Error Message**:
@@ -707,6 +742,7 @@ class MapperTest extends TestCase
 
 | Error Message | Cause | Solution |
 |---------------|-------|----------|
+| Class cannot be used for mapping | Missing #[Mappable] attribute | Add #[Mappable] to source and target |
 | Cannot create instance of class | Interface/abstract class | Use concrete class |
 | Invalid target type | Wrong type passed | Pass object or class string |
 | Cannot access property | Property not writable | Add setter or make public |
@@ -720,11 +756,12 @@ class MapperTest extends TestCase
 
 To avoid common issues:
 
-1. **Always initialize properties** with default values
-2. **Use strict types** (`declare(strict_types=1);`)
-3. **Write tests** for your mappings
-4. **Initialize nested objects** in constructors
-5. **Use #[MapTo]** for clarity even when auto-mapping works
-6. **Document complex mappings** with comments
+1. **Always mark classes with #[Mappable]** - Required on both source and target
+2. **Always initialize properties** with default values
+3. **Use strict types** (`declare(strict_types=1);`)
+4. **Write tests** for your mappings
+5. **Initialize nested objects** in constructors
+6. **Use #[MapTo]** for clarity even when auto-mapping works
+7. **Document complex mappings** with comments
 
 Happy mapping!

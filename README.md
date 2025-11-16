@@ -5,9 +5,11 @@ A powerful PHP object mapper library with attribute-based configuration for Symf
 ## Features
 
 - **Attribute-based Configuration**: Use PHP 8.1+ attributes to define mappings
+- **Explicit Opt-in**: Classes must be marked with `#[Mappable]` for type safety
 - **Symmetrical Mapping**: Same metadata works in both directions (A→B and B→A)
 - **Nested Properties**: Support for mapping to/from nested properties like `user.address.city`
 - **Auto-mapping**: Automatically maps properties with matching names
+- **Array Mapping**: Map collections with automatic element type conversion
 - **PropertyAccess Integration**: Leverages Symfony's PropertyAccess component for robust property access
 - **Type Safe**: Full PHP 8.1+ type hints and strict types
 
@@ -26,14 +28,19 @@ composer require alecszaharia/simmap
 
 ### Auto-mapping (Properties with Same Names)
 
+**Important**: Both source and target classes must be marked with `#[Mappable]` attribute.
+
 ```php
 use Alecszaharia\Simmap\Mapper;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class UserDTO {
     public string $name;
     public string $email;
 }
 
+#[Mappable]
 class UserEntity {
     public string $name;
     public string $email;
@@ -53,8 +60,10 @@ Use the `#[MapTo]` attribute to map properties with different names:
 
 ```php
 use Alecszaharia\Simmap\Attribute\MapTo;
+use Alecszaharia\Simmap\Attribute\Mappable;
 use Alecszaharia\Simmap\Mapper;
 
+#[Mappable]
 class ProductDTO {
     public string $productName;
 
@@ -62,6 +71,7 @@ class ProductDTO {
     public int $stock;
 }
 
+#[Mappable]
 class ProductEntity {
     public string $productName;
     public int $quantity;
@@ -89,7 +99,9 @@ Map flat properties to nested object structures:
 
 ```php
 use Alecszaharia\Simmap\Attribute\MapTo;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class PersonDTO {
     public string $name;
 
@@ -100,11 +112,13 @@ class PersonDTO {
     public string $country;
 }
 
+#[Mappable]
 class Address {
     public string $city;
     public string $country;
 }
 
+#[Mappable]
 class PersonEntity {
     public string $name;
     public Address $address;
@@ -130,7 +144,9 @@ Use `#[Ignore]` to exclude properties from mapping:
 
 ```php
 use Alecszaharia\Simmap\Attribute\Ignore;
+use Alecszaharia\Simmap\Attribute\Mappable;
 
+#[Mappable]
 class OrderDTO {
     public int $orderId;
     public float $total;
@@ -315,6 +331,9 @@ make test-filter FILTER=testMethodName
 # Run with coverage report
 make test-coverage
 
+# Run performance benchmarks
+make benchmark
+
 # Show all available commands
 make help
 ```
@@ -334,6 +353,25 @@ public function map(object $source, object|string|null $target = null): object
 - Returns: The mapped target object
 
 ### Attributes
+
+#### `#[Mappable]`
+
+**Required** - Marks a class as eligible for object mapping. Both source and target classes must have this attribute.
+
+```php
+use Alecszaharia\Simmap\Attribute\Mappable;
+
+#[Mappable]
+class UserDTO {
+    public string $name;
+}
+```
+
+Without this attribute, attempting to map will throw:
+```
+MappingException: Class "UserDTO" cannot be used as source for mapping.
+Add #[Mappable] attribute to the class to enable mapping.
+```
 
 #### `#[MapTo(string $targetProperty)]`
 
