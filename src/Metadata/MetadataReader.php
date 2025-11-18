@@ -72,6 +72,9 @@ final class MetadataReader
     /**
      * Build property mappings between two classes.
      *
+     * Collects mappings from BOTH source and target classes to enable true bidirectional mapping.
+     * This ensures that properties with #[MapTo] attributes on either side work in both directions.
+     *
      * @param ReflectionClass<object> $sourceReflection
      * @param ReflectionClass<object> $targetReflection
      * @return array<PropertyMapping>
@@ -81,42 +84,97 @@ final class MetadataReader
         ReflectionClass $targetReflection
     ): array {
         $mappings = [];
-        $targetProperties = $this->getPropertyNames($targetReflection);
+        $mappingKeys = []; // Track unique mappings to avoid duplicates (sourceProperty => targetProperty)
 
-        foreach ($sourceReflection->getProperties() as $sourceProperty) {
+        // Step 1: Collect mappings from source → target (existing behavior)
+        $this->collectMappingsFromClass(
+            $sourceReflection,
+            $targetReflection,
+            $mappings,
+            $mappingKeys,
+            false // not reversed
+        );
+
+        // Step 2: Collect mappings from target → source (new behavior for bidirectional support)
+        // We reverse the direction to find properties on target that should map back to source
+        $this->collectMappingsFromClass(
+            $targetReflection,
+            $sourceReflection,
+            $mappings,
+            $mappingKeys,
+            true // reversed - swap source and target in the resulting mappings
+        );
+
+        return $mappings;
+    }
+
+    /**
+     * Collect property mappings from one class to another.
+     *
+     * @param ReflectionClass<object> $fromReflection Class to read properties from
+     * @param ReflectionClass<object> $toReflection Class to map properties to
+     * @param array<PropertyMapping> $mappings Output array to append mappings to
+     * @param array<string, bool> $mappingKeys Track unique mappings to avoid duplicates
+     * @param bool $reversed If true, swap source and target in resulting PropertyMapping
+     */
+    private function collectMappingsFromClass(
+        ReflectionClass $fromReflection,
+        ReflectionClass $toReflection,
+        array &$mappings,
+        array &$mappingKeys,
+        bool $reversed
+    ): void {
+        $toProperties = $this->getPropertyNames($toReflection);
+
+        foreach ($fromReflection->getProperties() as $fromProperty) {
             // Skip properties marked with #[IgnoreMap] in source
-            if ($this->isIgnored($sourceProperty)) {
+            if ($this->isIgnored($fromProperty)) {
                 continue;
             }
 
-            $sourceName = $sourceProperty->getName();
+            $fromName = $fromProperty->getName();
 
             // Check for #[MapTo] attribute
-            $mapToAttribute = $this->getMapToAttribute($sourceProperty);
+            $mapToAttribute = $this->getMapToAttribute($fromProperty);
 
             if ($mapToAttribute !== null) {
                 // Custom mapping via #[MapTo]
-                $targetName = $mapToAttribute->targetProperty;
+                $toName = $mapToAttribute->targetProperty;
 
                 // Validate that target path exists (at least the root property)
-                if (!$this->targetPathExists($targetReflection, $targetName)) {
+                if (!$this->targetPathExists($toReflection, $toName)) {
                     continue;
                 }
-            } elseif (in_array($sourceName, $targetProperties, true)) {
+            } elseif (in_array($fromName, $toProperties, true)) {
                 // Default: map to same property name
-                $targetName = $sourceName;
+                $toName = $fromName;
             } else {
                 // No matching property and no #[MapTo], skip
                 continue;
             }
 
             // Skip if target property has #[IgnoreMap]
-            if ($this->isTargetPropertyIgnored($targetReflection, $targetName)) {
+            if ($this->isTargetPropertyIgnored($toReflection, $toName)) {
+                continue;
+            }
+
+            // Determine actual source and target property names based on direction
+            $sourceProperty = $reversed ? $toName : $fromName;
+            $targetProperty = $reversed ? $fromName : $toName;
+
+            // Create a unique key to detect duplicates
+            // For simple properties, key is "sourceProp => targetProp"
+            // For nested properties like "profile.bio => biography", we want to treat
+            // "profile.bio => biography" and "biography => profile.bio" as the same mapping
+            $mappingKey = $sourceProperty . ' => ' . $targetProperty;
+
+            // Skip if we already have this exact mapping
+            if (isset($mappingKeys[$mappingKey])) {
                 continue;
             }
 
             // Detect if this is an array property and extract source/target item classes
-            $isArray = $this->isArrayProperty($sourceProperty);
+            $isArray = $this->isArrayProperty($fromProperty);
             $targetClass = null;
             $sourceItemClass = null;
             $targetItemClass = null;
@@ -125,33 +183,56 @@ final class MetadataReader
                 // For array properties, we need to determine both sourceItemClass and targetItemClass
                 // to support bidirectional array mapping
 
-                // Get targetItemClass from source property's #[MapTo] attribute
-                if ($mapToAttribute !== null && $mapToAttribute->targetClass !== null) {
-                    $targetItemClass = $mapToAttribute->targetClass;
-                    $targetClass = $targetItemClass; // backward compatibility
-                }
+                if ($reversed) {
+                    // When reversed, fromProperty is actually on the target class
+                    // and toProperty is on the source class
 
-                // Get sourceItemClass from target property's #[MapTo] attribute (for reverse mapping)
-                $targetProperty = $this->findPropertyByPath($targetReflection, $targetName);
-                if ($targetProperty !== null) {
-                    $targetMapToAttribute = $this->getMapToAttribute($targetProperty);
-                    if ($targetMapToAttribute !== null && $targetMapToAttribute->targetClass !== null) {
-                        $sourceItemClass = $targetMapToAttribute->targetClass;
+                    // targetItemClass comes from the "from" property (which is actually target)
+                    if ($mapToAttribute !== null && $mapToAttribute->targetClass !== null) {
+                        $targetItemClass = $mapToAttribute->targetClass;
+                        $targetClass = $targetItemClass; // backward compatibility
+                    }
+
+                    // sourceItemClass comes from the "to" property (which is actually source)
+                    $toProperty = $this->findPropertyByPath($toReflection, $toName);
+                    if ($toProperty !== null) {
+                        $toMapToAttribute = $this->getMapToAttribute($toProperty);
+                        if ($toMapToAttribute !== null && $toMapToAttribute->targetClass !== null) {
+                            $sourceItemClass = $toMapToAttribute->targetClass;
+                        }
+                    }
+                } else {
+                    // Normal direction: fromProperty is source, toProperty is target
+
+                    // Get targetItemClass from source property's #[MapTo] attribute
+                    if ($mapToAttribute !== null && $mapToAttribute->targetClass !== null) {
+                        $targetItemClass = $mapToAttribute->targetClass;
+                        $targetClass = $targetItemClass; // backward compatibility
+                    }
+
+                    // Get sourceItemClass from target property's #[MapTo] attribute (for reverse mapping)
+                    $toProperty = $this->findPropertyByPath($toReflection, $toName);
+                    if ($toProperty !== null) {
+                        $toMapToAttribute = $this->getMapToAttribute($toProperty);
+                        if ($toMapToAttribute !== null && $toMapToAttribute->targetClass !== null) {
+                            $sourceItemClass = $toMapToAttribute->targetClass;
+                        }
                     }
                 }
             }
 
             $mappings[] = new PropertyMapping(
-                $sourceName,
-                $targetName,
+                $sourceProperty,
+                $targetProperty,
                 $isArray,
                 $targetClass,
                 $sourceItemClass,
                 $targetItemClass
             );
-        }
 
-        return $mappings;
+            // Mark this mapping as processed
+            $mappingKeys[$mappingKey] = true;
+        }
     }
 
     /**

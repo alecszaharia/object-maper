@@ -16,6 +16,7 @@ use Alecszaharia\Simmap\Tests\Fixtures\CompanyWithArrayObjectDTO;
 use Alecszaharia\Simmap\Tests\Fixtures\NonReciprocalSource;
 use Alecszaharia\Simmap\Tests\Fixtures\NonReciprocalTarget;
 use Alecszaharia\Simmap\Tests\Fixtures\NotMappableClass;
+use Alecszaharia\Simmap\Tests\Fixtures\Profile;
 use Alecszaharia\Simmap\Tests\Fixtures\User;
 use Alecszaharia\Simmap\Tests\Fixtures\UserDTO;
 use PHPUnit\Framework\TestCase;
@@ -326,6 +327,24 @@ final class MapperTest extends TestCase
         $this->assertSame('456 Oak Ave', $company->locations[1]->street);
         $this->assertSame('Los Angeles', $company->locations[1]->city);
     }
+    public function testReverseNestedArrayMapping(): void
+    {
+        $profile = new Profile();
+        $profile->avatar = 'Global Corp';
+        $profile->bio = 'Leading multinational company';
+
+        $user =  new User();
+        $user->name = 'Alice';
+        $user->email = 'email@email.com';
+        $user->profile = $profile;
+
+        // Map to Company
+        $userDto = $this->mapper->map($user, UserDTO::class);
+
+        $this->assertSame('Alice', $userDto->fullName);
+        $this->assertSame('email@email.com', $userDto->email);
+        $this->assertSame('Leading multinational company', $userDto->biography);
+    }
 
     public function testMultipleArrayPropertiesMapping(): void
     {
@@ -333,7 +352,7 @@ final class MapperTest extends TestCase
         $dto = new CompanyDTO();
         $dto->name = 'Multi Corp';
 
-        $emp = new UserDTO();
+        $emp = new UserDTO();!
         $emp->email = 'employee@multi.com';
         $emp->fullName = 'Employee Name';
         $dto->employeeDTOs = [$emp];
