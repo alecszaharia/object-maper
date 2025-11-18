@@ -1,7 +1,7 @@
 .PHONY: help test test-coverage test-file test-filter benchmark example clean install
 
 # Docker command configuration
-DOCKER_RUN = docker run --rm -v $$(pwd):/app --user $$(id -u):$$(id -g) -w /app tools:latest
+DOCKER_RUN = docker run --rm -t -v $$(pwd):/app --user $$(id -u):$$(id -g) -w /app tools:latest
 PHP = $(DOCKER_RUN) php
 
 help: ## Show this help message

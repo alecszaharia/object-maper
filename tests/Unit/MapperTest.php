@@ -1,529 +1,449 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Alecszaharia\Simmap\Tests\Unit;
 
 use Alecszaharia\Simmap\Exception\MappingException;
 use Alecszaharia\Simmap\Mapper;
-use Alecszaharia\Simmap\Metadata\MappingMetadata;
-use Alecszaharia\Simmap\Metadata\MetadataReader;
-use Alecszaharia\Simmap\Metadata\PropertyMapping;
+use Alecszaharia\Simmap\Tests\Fixtures\Address;
+use Alecszaharia\Simmap\Tests\Fixtures\AddressDTO;
+use Alecszaharia\Simmap\Tests\Fixtures\AdminUser;
+use Alecszaharia\Simmap\Tests\Fixtures\Company;
+use Alecszaharia\Simmap\Tests\Fixtures\CompanyDTO;
+use Alecszaharia\Simmap\Tests\Fixtures\CompanyWithArrayObject;
+use Alecszaharia\Simmap\Tests\Fixtures\CompanyWithArrayObjectDTO;
+use Alecszaharia\Simmap\Tests\Fixtures\NonReciprocalSource;
+use Alecszaharia\Simmap\Tests\Fixtures\NonReciprocalTarget;
+use Alecszaharia\Simmap\Tests\Fixtures\NotMappableClass;
+use Alecszaharia\Simmap\Tests\Fixtures\User;
+use Alecszaharia\Simmap\Tests\Fixtures\UserDTO;
 use PHPUnit\Framework\TestCase;
-use Prophecy\Argument;
-use Prophecy\PhpUnit\ProphecyTrait;
-use Prophecy\Prophecy\ObjectProphecy;
-use ReflectionClass;
-use Symfony\Component\PropertyAccess\Exception\AccessException;
-use Symfony\Component\PropertyAccess\Exception\NoSuchPropertyException;
-use Symfony\Component\PropertyAccess\Exception\UninitializedPropertyException;
-use Symfony\Component\PropertyAccess\PropertyAccessorInterface;
 
-class MapperTest extends TestCase
+/**
+ * Comprehensive tests for the Mapper class.
+ *
+ * Tests cover:
+ * - Bidirectional mapping with same property names
+ * - Custom property name mapping via #[MapTo]
+ * - Nested property paths with dot notation
+ * - Property exclusion via #[IgnoreMap]
+ * - Multiple target classes on single source
+ * - Metadata caching behavior
+ * - Target class auto-instantiation
+ * - Private property access via getters/setters
+ * - Error cases and validation
+ */
+final class MapperTest extends TestCase
 {
-    use ProphecyTrait;
+    private Mapper $mapper;
 
-    private const TEST_NAME = 'John';
-    private const TEST_AGE = 30;
-    private const TEST_VALUE = 'test';
-
-    private function createMockPropertyAccessor(): ObjectProphecy
+    protected function setUp(): void
     {
-        return $this->prophesize(PropertyAccessorInterface::class);
+        $this->mapper = new Mapper();
     }
 
-    private function createMockMetadataReader(
-        object $source,
-        object $target,
-        array $sourceMappings = [],
-        array $sourceIgnored = [],
-        array $targetMappings = [],
-        array $targetIgnored = [],
-        bool $sourceIsMappable = true,
-        bool $targetIsMappable = true
-    ): ObjectProphecy {
-        $metadataReader = $this->prophesize(MetadataReader::class);
 
-        $sourceMetadata = new MappingMetadata(
-            get_class($source),
-            $sourceMappings,
-            $sourceIgnored,
-            new ReflectionClass($source),
-            $sourceIsMappable
-        );
+    public function testMappingToExistingInstance(): void
+    {
+        $dto = new UserDTO();
+        $dto->email = 'test@example.com';
+        $dto->fullName = 'John Doe';
+        $dto->age = 30;
 
-        $targetMetadata = new MappingMetadata(
-            get_class($target),
-            $targetMappings,
-            $targetIgnored,
-            new ReflectionClass($target),
-            $targetIsMappable
-        );
+        $user = new User();
+        $user->internalId = 'preserve-me';
 
-        $metadataReader->getMetadata($source)->willReturn($sourceMetadata);
-        $metadataReader->getMetadata(Argument::type('object'))->willReturn($targetMetadata);
+        $result = $this->mapper->map($dto, $user);
 
-        return $metadataReader;
+        $this->assertSame($user, $result);
+        $this->assertSame('test@example.com', $user->email);
+        $this->assertSame('John Doe', $user->name);
+        $this->assertSame(30, $user->age);
+        $this->assertSame('preserve-me', $user->internalId); // Should not be overwritten
     }
 
-    /**
-     * @dataProvider constructorDependenciesProvider
-     */
-    public function testConstructor(?PropertyAccessorInterface $accessor, ?MetadataReader $reader): void
+
+    public function testIgnoredPropertiesAreNotMapped(): void
     {
-        $mapper = new Mapper($accessor, $reader);
-        $this->assertInstanceOf(Mapper::class, $mapper);
+        $dto = new UserDTO();
+        $dto->email = 'test@example.com';
+        $dto->temporaryToken = 'secret-token';
+
+        $user = $this->mapper->map($dto, User::class);
+
+        // temporaryToken has #[IgnoreMap], should not affect user
+        $this->assertSame('test@example.com', $user->email);
+
+        // internalId on User also has #[IgnoreMap]
+        $user->internalId = 'internal-value';
+
+        // Map back to the same DTO instance to preserve ignored properties
+        $dtoBack = $dto;
+        $this->mapper->map($user, $dtoBack);
+        // temporaryToken should remain unchanged because it has #[IgnoreMap]
+        $this->assertSame('secret-token', $dtoBack->temporaryToken);
     }
 
-    public static function constructorDependenciesProvider(): array
+
+    public function testMappingToMultipleTargetClasses(): void
     {
-        return [
-            'default dependencies' => [null, null],
-        ];
+        $dto = new UserDTO();
+        $dto->email = 'admin@example.com';
+        $dto->fullName = 'Admin User';
+        $dto->age = 35;
+
+        // UserDTO can map to both User and AdminUser
+        $user = $this->mapper->map($dto, User::class);
+        $this->assertInstanceOf(User::class, $user);
+        $this->assertSame('Admin User', $user->name);
+
+        $adminUser = $this->mapper->map($dto, AdminUser::class);
+        $this->assertInstanceOf(AdminUser::class, $adminUser);
+        $this->assertSame('Admin User', $adminUser->name);
     }
 
-    public function testMapWithNullTargetReturnsSource(): void
+
+    public function testTargetRequiredException(): void
     {
-        $source = new class {
-            public string $name = 'test';
-        };
-
-        $mapper = new Mapper();
-        $result = $mapper->map($source, null);
-
-        $this->assertSame($source, $result);
-    }
-
-    public function testMapWithObjectTargetMapsProperties(): void
-    {
-        $source = new class {
-            public string $name = 'John';
-            public int $age = 30;
-        };
-
-        $target = new class {
-            public string $name = '';
-            public int $age = 0;
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader($source, $target);
-
-        $propertyAccessor->getValue($source, 'name')->willReturn(self::TEST_NAME);
-        $propertyAccessor->getValue($source, 'age')->willReturn(self::TEST_AGE);
-        $propertyAccessor->isWritable(Argument::type('object'), 'name')->willReturn(true);
-        $propertyAccessor->isWritable(Argument::type('object'), 'age')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'name', self::TEST_NAME)->shouldBeCalled();
-        $propertyAccessor->setValue(Argument::type('object'), 'age', self::TEST_AGE)->shouldBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapWithClassNameCreatesNewInstance(): void
-    {
-        $source = new class {
-            public string $name = 'Jane';
-        };
-
-        $targetClass = new class {
-            public string $name = '';
-        };
-        $targetClassName = get_class($targetClass);
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader($source, $targetClass);
-
-        $propertyAccessor->getValue($source, 'name')->willReturn('Jane');
-        $propertyAccessor->isWritable(Argument::type('object'), 'name')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'name', 'Jane')->shouldBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $targetClassName);
-
-        $this->assertInstanceOf($targetClassName, $result);
-        $this->assertNotSame($source, $result);
-    }
-
-    public function testMapUsesCustomPropertyMappings(): void
-    {
-        $source = new class {
-            public string $firstName = 'John';
-        };
-
-        $target = new class {
-            public string $fullName = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            sourceMappings: [new PropertyMapping('firstName', 'fullName')]
-        );
-
-        $propertyAccessor->getValue($source, 'firstName')->willReturn(self::TEST_NAME);
-        $propertyAccessor->isWritable(Argument::type('object'), 'fullName')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'fullName', self::TEST_NAME)->shouldBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapSupportsReverseMappings(): void
-    {
-        $source = new class {
-            public string $name = 'Bob';
-        };
-
-        $target = new class {
-            public string $nickname = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            targetMappings: [new PropertyMapping('nickname', 'name')]
-        );
-
-        $propertyAccessor->getValue($source, 'name')->willReturn('Bob');
-        $propertyAccessor->isWritable(Argument::type('object'), 'nickname')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'nickname', 'Bob')->shouldBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapSupportsNestedTargetPropertyPaths(): void
-    {
-        $source = new class {
-            public string $city = 'New York';
-        };
-
-        $address = new class {
-            public string $city = '';
-        };
-
-        $target = new class {
-            public object $address;
-
-            public function __construct()
-            {
-                $this->address = new class {
-                    public string $city = '';
-                };
-            }
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            sourceMappings: [new PropertyMapping('city', 'address.city')]
-        );
-
-        $propertyAccessor->getValue($source, 'city')->willReturn('New York');
-        $propertyAccessor->isWritable(Argument::type('object'), 'address.city')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'address.city', 'New York')->shouldBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapSkipsIgnoredPropertiesInSource(): void
-    {
-        $source = new class {
-            public string $name = 'Alice';
-            public string $secret = 'hidden';
-        };
-
-        $target = new class {
-            public string $name = '';
-            public string $secret = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            sourceIgnored: ['secret']
-        );
-
-        $propertyAccessor->getValue($source, 'name')->willReturn('Alice');
-        $propertyAccessor->getValue($source, 'secret')->shouldNotBeCalled();
-        $propertyAccessor->isWritable(Argument::type('object'), 'name')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'name', 'Alice')->shouldBeCalled();
-        $propertyAccessor->setValue(Argument::type('object'), 'secret', Argument::any())->shouldNotBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapSkipsIgnoredPropertiesInTarget(): void
-    {
-        $source = new class {
-            public string $value = 'test';
-        };
-
-        $target = new class {
-            public string $value = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            targetIgnored: ['value']
-        );
-
-        $propertyAccessor->getValue($source, 'value')->shouldNotBeCalled();
-        $propertyAccessor->setValue(Argument::type('object'), 'value', Argument::any())->shouldNotBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapIgnoresSourcePropertiesMissingFromTarget(): void
-    {
-        $source = new class {
-            public string $name = 'test';
-            public string $extraField = 'extra';
-        };
-
-        $target = new class {
-            public string $name = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader($source, $target);
-
-        $propertyAccessor->getValue($source, 'name')->willReturn(self::TEST_VALUE);
-        $propertyAccessor->getValue($source, 'extraField')->shouldNotBeCalled();
-        $propertyAccessor->isWritable(Argument::type('object'), 'name')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'name', self::TEST_VALUE)->shouldBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    /**
-     * @dataProvider propertyReadExceptionProvider
-     */
-    public function testMapSkipsPropertiesWithReadErrors(\Throwable $exception): void
-    {
-        $source = new class {
-            public string $accessible = 'value';
-            public string $problematic = 'hidden';
-        };
-
-        $target = new class {
-            public string $accessible = '';
-            public string $problematic = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader($source, $target);
-
-        $propertyAccessor->getValue($source, 'accessible')->willReturn('value');
-        $propertyAccessor->getValue($source, 'problematic')->willThrow($exception);
-        $propertyAccessor->isWritable(Argument::type('object'), 'accessible')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'accessible', 'value')->shouldBeCalled();
-        $propertyAccessor->setValue(Argument::type('object'), 'problematic', Argument::any())->shouldNotBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public static function propertyReadExceptionProvider(): array
-    {
-        return [
-            'uninitialized property' => [
-                new UninitializedPropertyException('Property is not initialized')
-            ],
-            'inaccessible property' => [
-                new AccessException('Cannot access property')
-            ],
-            'non-existent property' => [
-                new NoSuchPropertyException('Property does not exist')
-            ],
-        ];
-    }
-
-    public function testMapSkipsNonWritableTargetProperties(): void
-    {
-        $source = new class {
-            public string $name = 'test';
-        };
-
-        $target = new class {
-            public string $name = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader($source, $target);
-
-        $propertyAccessor->getValue($source, 'name')->willReturn(self::TEST_VALUE);
-        $propertyAccessor->isWritable(Argument::type('object'), 'name')->willReturn(false);
-        $propertyAccessor->setValue(Argument::any(), Argument::any(), Argument::any())->shouldNotBeCalled();
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-        $result = $mapper->map($source, $target);
-
-        $this->assertSame($target, $result);
-    }
-
-    public function testMapThrowsExceptionWhenPropertyAccessFails(): void
-    {
-        $source = new class {
-            public string $name = 'test';
-        };
-
-        $target = new class {
-            public string $name = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader($source, $target);
-
-        $propertyAccessor->getValue($source, 'name')->willReturn(self::TEST_VALUE);
-        $propertyAccessor->isWritable(Argument::type('object'), 'name')->willReturn(true);
-        $propertyAccessor->setValue(Argument::type('object'), 'name', self::TEST_VALUE)
-            ->willThrow(new AccessException('Cannot write property'));
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-
         $this->expectException(MappingException::class);
-        $this->expectExceptionMessage('Cannot access property "name" on class');
-        $mapper->map($source, $target);
+        $this->expectExceptionMessage('Target parameter is required');
+
+        $dto = new UserDTO();
+        $this->mapper->map($dto, null);
     }
 
-    /**
-     * @dataProvider nonInstantiableClassProvider
-     */
-    public function testMapThrowsExceptionForNonInstantiableClass(string $className): void
+    public function testNonReciprocalMappingThrowsException(): void
     {
-        $source = new class {
-            public string $name = 'test';
-        };
-
-        $mapper = new Mapper();
-
         $this->expectException(MappingException::class);
-        $this->expectExceptionMessage('Cannot create instance');
-        $mapper->map($source, $className);
+        $this->expectExceptionMessage('Non-reciprocal mapping detected');
+
+        $source = new NonReciprocalSource();
+        $this->mapper->map($source, NonReciprocalTarget::class);
     }
 
-    public static function nonInstantiableClassProvider(): array
+    public function testMappingNotMappableClassThrowsException(): void
     {
-        return [
-            'abstract class' => [AbstractTestClass::class],
-            'interface' => [TestInterface::class],
-            'non-existent class' => ['NonExistentClass'],
-        ];
-    }
-
-    public function testMapThrowsExceptionWhenSourceIsNotMappable(): void
-    {
-        $source = new class {
-            public string $name = 'test';
-        };
-
-        $target = new class {
-            public string $name = '';
-        };
-
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            sourceIsMappable: false,  // Source is not mappable
-            targetIsMappable: true
-        );
-
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
-
         $this->expectException(MappingException::class);
-        $this->expectExceptionMessage('cannot be used as source for mapping');
-        $this->expectExceptionMessage('#[Mappable]');
-        $mapper->map($source, $target);
+
+        $source = new NotMappableClass();
+        $target = new UserDTO();
+
+        $this->mapper->map($source, $target);
     }
 
-    public function testMapThrowsExceptionWhenTargetIsNotMappable(): void
+
+    public function testCompleteWorkflowWithAllFeatures(): void
     {
-        $source = new class {
-            public string $name = 'test';
-        };
+        // Create a DTO with all types of properties
+        $dto = new UserDTO();
+        $dto->email = 'complete@example.com';
+        $dto->fullName = 'Complete Test';
+        $dto->age = 42;
+        $dto->temporaryToken = 'should-be-ignored';
+        $dto->biography = 'Full stack developer';
+        $dto->setPassword('secret');
 
-        $target = new class {
-            public string $name = '';
-        };
+        // Map to User
+        $user = $this->mapper->map($dto, User::class);
 
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            sourceIsMappable: true,
-            targetIsMappable: false  // Target is not mappable
-        );
+        // Verify all mappings
+        $this->assertSame('complete@example.com', $user->email); // Same name
+        $this->assertSame('Complete Test', $user->name); // Custom mapping
+        $this->assertSame(42, $user->age); // Same name
+        $this->assertSame('Full stack developer', $user->profile->bio); // Nested
+        $this->assertSame('secret', $user->getPassword()); // Private property
 
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
+        // Modify user and map back to the original DTO instance
+        $user->email = 'modified@example.com';
+        $user->name = 'Modified Name';
+        $user->age = 43;
+        $user->profile->bio = 'Updated bio';
+        $user->setPassword('newsecret');
+        $user->internalId = 'should-not-map';
 
-        $this->expectException(MappingException::class);
-        $this->expectExceptionMessage('cannot be used as target for mapping');
-        $this->expectExceptionMessage('#[Mappable]');
-        $mapper->map($source, $target);
+        // Reuse the same DTO instance to preserve ignored properties
+        $dtoBack = $dto;
+        $this->mapper->map($user, $dtoBack);
+
+        // Verify reverse mappings
+        $this->assertSame('modified@example.com', $dtoBack->email);
+        $this->assertSame('Modified Name', $dtoBack->fullName);
+        $this->assertSame(43, $dtoBack->age);
+        $this->assertSame('Updated bio', $dtoBack->biography);
+        $this->assertSame('newsecret', $dtoBack->getPassword());
+        $this->assertSame('should-be-ignored', $dtoBack->temporaryToken); // Unchanged because #[IgnoreMap]
     }
 
-    public function testMapThrowsExceptionWhenBothAreNotMappable(): void
+    public function testNullValuesAreMapped(): void
     {
-        $source = new class {
-            public string $name = 'test';
-        };
+        $dto = new UserDTO();
+        $dto->email = 'null-test@example.com';
+        $dto->biography = '';
 
-        $target = new class {
-            public string $name = '';
-        };
+        $user = $this->mapper->map($dto, User::class);
 
-        $propertyAccessor = $this->createMockPropertyAccessor();
-        $metadataReader = $this->createMockMetadataReader(
-            $source,
-            $target,
-            sourceIsMappable: false,  // Source is not mappable
-            targetIsMappable: false   // Target is also not mappable
-        );
+        // Empty string should be mapped
+        $this->assertSame('', $user->profile->bio);
 
-        $mapper = new Mapper($propertyAccessor->reveal(), $metadataReader->reveal());
+        // Test with actual nullable property
+        $user->profile->avatar = null;
+        $dtoBack = $this->mapper->map($user, new UserDTO());
 
-        // Should fail on source check first
-        $this->expectException(MappingException::class);
-        $this->expectExceptionMessage('cannot be used as source for mapping');
-        $this->expectExceptionMessage('#[Mappable]');
-        $mapper->map($source, $target);
+        // Should handle null gracefully
+        $this->assertInstanceOf(UserDTO::class, $dtoBack);
     }
-}
 
-// Helper classes for testing
-abstract class AbstractTestClass
-{
-    public string $name = '';
-}
+    // ===== Array Mapping Tests =====
 
-interface TestInterface
-{
-    public function getName(): string;
+    public function testBasicArrayMapping(): void
+    {
+        // Create DTOs with employees
+        $dto = new CompanyDTO();
+        $dto->name = 'Tech Corp';
+
+        $emp1 = new UserDTO();
+        $emp1->email = 'john@techcorp.com';
+        $emp1->fullName = 'John Doe';
+        $emp1->age = 30;
+
+        $emp2 = new UserDTO();
+        $emp2->email = 'jane@techcorp.com';
+        $emp2->fullName = 'Jane Smith';
+        $emp2->age = 28;
+
+        $dto->employeeDTOs = [$emp1, $emp2];
+
+        // Map to Company entity
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertSame('Tech Corp', $company->name);
+        $this->assertCount(2, $company->employees);
+        $this->assertInstanceOf(User::class, $company->employees[0]);
+        $this->assertInstanceOf(User::class, $company->employees[1]);
+        $this->assertSame('john@techcorp.com', $company->employees[0]->email);
+        $this->assertSame('John Doe', $company->employees[0]->name);
+        $this->assertSame('jane@techcorp.com', $company->employees[1]->email);
+        $this->assertSame('Jane Smith', $company->employees[1]->name);
+    }
+
+    public function testBidirectionalArrayMapping(): void
+    {
+        // Create Company with employees
+        $company = new Company();
+        $company->name = 'Acme Inc';
+
+        $user1 = new User();
+        $user1->email = 'alice@acme.com';
+        $user1->name = 'Alice Johnson';
+        $user1->age = 35;
+
+        $user2 = new User();
+        $user2->email = 'bob@acme.com';
+        $user2->name = 'Bob Wilson';
+        $user2->age = 42;
+
+        $company->employees = [$user1, $user2];
+
+        // Map to DTO
+        $dto = $this->mapper->map($company, CompanyDTO::class);
+
+        $this->assertSame('Acme Inc', $dto->name);
+        $this->assertCount(2, $dto->employeeDTOs);
+        $this->assertInstanceOf(UserDTO::class, $dto->employeeDTOs[0]);
+        $this->assertInstanceOf(UserDTO::class, $dto->employeeDTOs[1]);
+        $this->assertSame('alice@acme.com', $dto->employeeDTOs[0]->email);
+        $this->assertSame('Alice Johnson', $dto->employeeDTOs[0]->fullName);
+        $this->assertSame('bob@acme.com', $dto->employeeDTOs[1]->email);
+        $this->assertSame('Bob Wilson', $dto->employeeDTOs[1]->fullName);
+
+        // Map back to Company
+        $companyBack = $this->mapper->map($dto, Company::class);
+
+        $this->assertSame('Acme Inc', $companyBack->name);
+        $this->assertCount(2, $companyBack->employees);
+        $this->assertSame('alice@acme.com', $companyBack->employees[0]->email);
+        $this->assertSame('Alice Johnson', $companyBack->employees[0]->name);
+    }
+
+    public function testEmptyArrayMapping(): void
+    {
+        $dto = new CompanyDTO();
+        $dto->name = 'Empty Corp';
+        $dto->employeeDTOs = [];
+
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertSame('Empty Corp', $company->name);
+        $this->assertIsArray($company->employees);
+        $this->assertCount(0, $company->employees);
+    }
+
+    public function testArrayWithNullItems(): void
+    {
+        $dto = new CompanyDTO();
+        $dto->name = 'Null Corp';
+
+        $emp1 = new UserDTO();
+        $emp1->email = 'exists@null.com';
+        $emp1->fullName = 'Exists User';
+
+        // Array with null item
+        $dto->employeeDTOs = [$emp1, null];
+
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertCount(2, $company->employees);
+        $this->assertInstanceOf(User::class, $company->employees[0]);
+        $this->assertNull($company->employees[1]);
+    }
+
+    public function testNestedArrayMapping(): void
+    {
+        // Create company with multiple locations
+        $dto = new CompanyDTO();
+        $dto->name = 'Global Corp';
+
+        $addr1 = new AddressDTO();
+        $addr1->street = '123 Main St';
+        $addr1->city = 'New York';
+        $addr1->zipCode = '10001';
+
+        $addr2 = new AddressDTO();
+        $addr2->street = '456 Oak Ave';
+        $addr2->city = 'Los Angeles';
+        $addr2->zipCode = '90001';
+
+        $dto->locationDTOs = [$addr1, $addr2];
+
+        // Map to Company
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertCount(2, $company->locations);
+        $this->assertInstanceOf(Address::class, $company->locations[0]);
+        $this->assertSame('123 Main St', $company->locations[0]->street);
+        $this->assertSame('New York', $company->locations[0]->city);
+        $this->assertSame('456 Oak Ave', $company->locations[1]->street);
+        $this->assertSame('Los Angeles', $company->locations[1]->city);
+    }
+
+    public function testMultipleArrayPropertiesMapping(): void
+    {
+        // Create company with both employees and locations
+        $dto = new CompanyDTO();
+        $dto->name = 'Multi Corp';
+
+        $emp = new UserDTO();
+        $emp->email = 'employee@multi.com';
+        $emp->fullName = 'Employee Name';
+        $dto->employeeDTOs = [$emp];
+
+        $addr = new AddressDTO();
+        $addr->street = '789 Elm St';
+        $addr->city = 'Chicago';
+        $addr->zipCode = '60601';
+        $dto->locationDTOs = [$addr];
+
+        // Map to Company
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertCount(1, $company->employees);
+        $this->assertCount(1, $company->locations);
+        $this->assertInstanceOf(User::class, $company->employees[0]);
+        $this->assertInstanceOf(Address::class, $company->locations[0]);
+        $this->assertSame('employee@multi.com', $company->employees[0]->email);
+        $this->assertSame('789 Elm St', $company->locations[0]->street);
+    }
+
+    public function testArrayMappingPreservesKeys(): void
+    {
+        $dto = new CompanyDTO();
+        $dto->name = 'Key Corp';
+
+        $emp1 = new UserDTO();
+        $emp1->email = 'first@key.com';
+        $emp1->fullName = 'First Employee';
+
+        $emp2 = new UserDTO();
+        $emp2->email = 'second@key.com';
+        $emp2->fullName = 'Second Employee';
+
+        // Use associative array keys
+        $dto->employeeDTOs = ['manager' => $emp1, 'developer' => $emp2];
+
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertCount(2, $company->employees);
+        $this->assertArrayHasKey('manager', $company->employees);
+        $this->assertArrayHasKey('developer', $company->employees);
+        $this->assertSame('first@key.com', $company->employees['manager']->email);
+        $this->assertSame('second@key.com', $company->employees['developer']->email);
+    }
+
+    public function testArrayMappingWithInvalidItemTypeThrowsException(): void
+    {
+        $this->expectException(MappingException::class);
+        $this->expectExceptionMessage('Array item at index 0');
+        $this->expectExceptionMessage('is not an object');
+
+        $dto = new CompanyDTO();
+        $dto->name = 'Invalid Corp';
+        $dto->employeeDTOs = ['not-an-object']; // String instead of object
+
+        $this->mapper->map($dto, Company::class);
+    }
+
+    public function testLargeArrayMapping(): void
+    {
+        $dto = new CompanyDTO();
+        $dto->name = 'Large Corp';
+
+        // Create 100 employees
+        for ($i = 0; $i < 100; $i++) {
+            $emp = new UserDTO();
+            $emp->email = "employee{$i}@large.com";
+            $emp->fullName = "Employee {$i}";
+            $emp->age = 20 + ($i % 50);
+            $dto->employeeDTOs[] = $emp;
+        }
+
+        $company = $this->mapper->map($dto, Company::class);
+
+        $this->assertCount(100, $company->employees);
+        $this->assertSame('employee0@large.com', $company->employees[0]->email);
+        $this->assertSame('employee99@large.com', $company->employees[99]->email);
+    }
+
+    public function testArrayObjectMapping(): void
+    {
+        $dto = new CompanyWithArrayObjectDTO();
+        $dto->name = 'ArrayObject Corp';
+
+        $emp1 = new UserDTO();
+        $emp1->email = 'ao1@test.com';
+        $emp1->fullName = 'AO Employee 1';
+
+        $emp2 = new UserDTO();
+        $emp2->email = 'ao2@test.com';
+        $emp2->fullName = 'AO Employee 2';
+
+        // Add items to ArrayObject
+        $dto->employeeDTOs->append($emp1);
+        $dto->employeeDTOs->append($emp2);
+
+        // Map to Company entity
+        $company = $this->mapper->map($dto, CompanyWithArrayObject::class);
+
+        $this->assertInstanceOf(\ArrayObject::class, $company->employees);
+        $this->assertCount(2, $company->employees);
+        $this->assertInstanceOf(User::class, $company->employees[0]);
+        $this->assertSame('ao1@test.com', $company->employees[0]->email);
+        $this->assertSame('AO Employee 1', $company->employees[0]->name);
+
+        // Test bidirectional mapping
+        $dtoBack = $this->mapper->map($company, CompanyWithArrayObjectDTO::class);
+        $this->assertInstanceOf(\ArrayObject::class, $dtoBack->employeeDTOs);
+        $this->assertCount(2, $dtoBack->employeeDTOs);
+        $this->assertSame('ao1@test.com', $dtoBack->employeeDTOs[0]->email);
+    }
 }

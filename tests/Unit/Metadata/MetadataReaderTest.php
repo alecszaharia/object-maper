@@ -4,133 +4,156 @@ declare(strict_types=1);
 
 namespace Alecszaharia\Simmap\Tests\Unit\Metadata;
 
-use Alecszaharia\Simmap\Attribute\Ignore;
-use Alecszaharia\Simmap\Attribute\Mappable;
-use Alecszaharia\Simmap\Attribute\MapTo;
+use Alecszaharia\Simmap\Metadata\MappingMetadata;
 use Alecszaharia\Simmap\Metadata\MetadataReader;
+use Alecszaharia\Simmap\Tests\Fixtures\AdminUser;
+use Alecszaharia\Simmap\Tests\Fixtures\NonReciprocalSource;
+use Alecszaharia\Simmap\Tests\Fixtures\NonReciprocalTarget;
+use Alecszaharia\Simmap\Tests\Fixtures\NotMappableClass;
+use Alecszaharia\Simmap\Tests\Fixtures\User;
+use Alecszaharia\Simmap\Tests\Fixtures\UserDTO;
 use PHPUnit\Framework\TestCase;
 
-class MetadataReaderTest extends TestCase
+/**
+ * Tests for MetadataReader class.
+ *
+ * Verifies attribute reading, property mapping detection, and metadata construction.
+ */
+final class MetadataReaderTest extends TestCase
 {
-    public function testDetectsMappableAttribute(): void
+    private MetadataReader $reader;
+
+    protected function setUp(): void
     {
-        $reader = new MetadataReader();
-
-        $mappableMetadata = $reader->getMetadata(MappableTestClass::class);
-        $this->assertTrue($mappableMetadata->isMappable);
-
-        $nonMappableMetadata = $reader->getMetadata(NonMappableTestClass::class);
-        $this->assertFalse($nonMappableMetadata->isMappable);
+        $this->reader = new MetadataReader();
     }
 
-    public function testReadsMapToAttribute(): void
+    public function testBuildMetadataForValidMapping(): void
     {
-        $reader = new MetadataReader();
-        $metadata = $reader->getMetadata(ClassWithMapTo::class);
+        $metadata = $this->reader->buildMetadata(UserDTO::class, User::class);
 
-        $this->assertSame('targetName', $metadata->findTargetProperty('name'));
-    }
-    public function testReadsMapToAttributeWithNullTargetProperty(): void
-    {
-        $reader = new MetadataReader();
-        $metadata = $reader->getMetadata(ClassWithMapToDefaultToPropertyName::class);
-
-        $this->assertSame('name', $metadata->findTargetProperty('name'));
+        $this->assertInstanceOf(MappingMetadata::class, $metadata);
+        $this->assertSame(UserDTO::class, $metadata->classA);
+        $this->assertSame(User::class, $metadata->classB);
+        $this->assertTrue($metadata->isValidMapping);
+        $this->assertNotEmpty($metadata->propertyMappings);
     }
 
-    public function testReadsIgnoreAttribute(): void
+    public function testMetadataContainsCorrectPropertyMappings(): void
     {
-        $reader = new MetadataReader();
-        $metadata = $reader->getMetadata(ClassWithIgnored::class);
+        $metadata = $this->reader->buildMetadata(UserDTO::class, User::class);
 
-        $this->assertTrue($metadata->isPropertyIgnored('ignored'));
-        $this->assertFalse($metadata->isPropertyIgnored('notIgnored'));
+        $mappings = $metadata->getMappingsForDirection(UserDTO::class, User::class);
+
+        // Find specific mappings
+        $emailMapping = $this->findMapping($mappings, 'email');
+        $this->assertNotNull($emailMapping);
+        $this->assertSame('email', $emailMapping->sourceProperty);
+        $this->assertSame('email', $emailMapping->targetProperty); // Same name
+
+        $fullNameMapping = $this->findMapping($mappings, 'fullName');
+        $this->assertNotNull($fullNameMapping);
+        $this->assertSame('fullName', $fullNameMapping->sourceProperty);
+        $this->assertSame('name', $fullNameMapping->targetProperty); // Custom via #[MapTo]
+
+        $biographyMapping = $this->findMapping($mappings, 'biography');
+        $this->assertNotNull($biographyMapping);
+        $this->assertSame('biography', $biographyMapping->sourceProperty);
+        $this->assertSame('profile.bio', $biographyMapping->targetProperty); // Nested
     }
 
-    public function testCachesAndClearsCacheCorrectly(): void
+    public function testIgnoredPropertiesNotInMetadata(): void
     {
-        $reader = new MetadataReader();
+        $metadata = $this->reader->buildMetadata(UserDTO::class, User::class);
+        $mappings = $metadata->getMappingsForDirection(UserDTO::class, User::class);
 
-        // Test that metadata is cached
-        $metadata1 = $reader->getMetadata(CachedTestClass::class);
-        $metadata2 = $reader->getMetadata(CachedTestClass::class);
-        $this->assertSame($metadata1, $metadata2);
-
-        // Test that clearCache removes cached data
-        $reader->clearCache();
-        $metadata3 = $reader->getMetadata(CachedTestClass::class);
-        $this->assertNotSame($metadata1, $metadata3);
+        // temporaryToken has #[IgnoreMap]
+        $temporaryTokenMapping = $this->findMapping($mappings, 'temporaryToken');
+        $this->assertNull($temporaryTokenMapping);
     }
 
-    public function testReadsMetadataFromObjectInstance(): void
+    public function testNonReciprocalMappingIsInvalid(): void
     {
-        $reader = new MetadataReader();
-        $instance = new MappableTestClass();
-        $metadata = $reader->getMetadata($instance);
+        $metadata = $this->reader->buildMetadata(
+            NonReciprocalSource::class,
+            NonReciprocalTarget::class
+        );
 
-        $this->assertSame(MappableTestClass::class, $metadata->className);
+        $this->assertFalse($metadata->isValidMapping);
     }
 
-    public function testMappableAttributeIsNotInherited(): void
+    public function testBothClassesMustHaveMappableAttribute(): void
     {
-        $reader = new MetadataReader();
-        $parentMetadata = $reader->getMetadata(MappableParentClass::class);
-        $childMetadata = $reader->getMetadata(NonMappableChildClass::class);
+        $metadata = $this->reader->buildMetadata(
+            UserDTO::class,
+            NotMappableClass::class
+        );
 
-        $this->assertTrue($parentMetadata->isMappable);
-        $this->assertFalse($childMetadata->isMappable);
+        $this->assertFalse($metadata->isValidMapping);
     }
-}
 
-// Test fixture classes
-#[Mappable]
-class MappableTestClass
-{
-    public string $name;
-}
+    public function testMetadataForMultipleTargets(): void
+    {
+        // UserDTO has #[Mappable] for both User and AdminUser
+        $userMetadata = $this->reader->buildMetadata(UserDTO::class, User::class);
+        $adminMetadata = $this->reader->buildMetadata(UserDTO::class, AdminUser::class);
 
-class NonMappableTestClass
-{
-    public string $name;
-}
+        $this->assertTrue($userMetadata->isValidMapping);
+        $this->assertTrue($adminMetadata->isValidMapping);
 
-#[Mappable]
-class ClassWithMapTo
-{
-    #[MapTo('targetName')]
-    public string $name;
-}
+        // Both should have property mappings
+        $this->assertNotEmpty($userMetadata->propertyMappings);
+        $this->assertNotEmpty($adminMetadata->propertyMappings);
+    }
 
-#[Mappable]
-class ClassWithMapToDefaultToPropertyName
-{
-    #[MapTo]
-    public string $name;
-}
+    public function testReversedMappingsAreCorrect(): void
+    {
+        $metadata = $this->reader->buildMetadata(UserDTO::class, User::class);
 
-#[Mappable]
-class ClassWithIgnored
-{
-    #[Ignore]
-    public string $ignored;
+        // Get mappings in both directions
+        $forwardMappings = $metadata->getMappingsForDirection(UserDTO::class, User::class);
+        $reverseMappings = $metadata->getMappingsForDirection(User::class, UserDTO::class);
 
-    public string $notIgnored;
-}
+        // Count should be the same
+        $this->assertCount(count($forwardMappings), $reverseMappings);
 
-#[Mappable]
-class CachedTestClass
-{
-    public string $name;
-}
+        // Find fullName mapping in forward direction
+        $forwardFullName = $this->findMapping($forwardMappings, 'fullName');
+        $this->assertNotNull($forwardFullName);
+        $this->assertSame('fullName', $forwardFullName->sourceProperty);
+        $this->assertSame('name', $forwardFullName->targetProperty);
 
-#[Mappable]
-class MappableParentClass
-{
-    public string $parentProp;
-}
+        // In reverse direction, it should be swapped
+        $reverseFullName = $this->findMapping($reverseMappings, 'name');
+        $this->assertNotNull($reverseFullName);
+        $this->assertSame('name', $reverseFullName->sourceProperty);
+        $this->assertSame('fullName', $reverseFullName->targetProperty);
+    }
 
-// Child class does not have #[Mappable]
-class NonMappableChildClass extends MappableParentClass
-{
-    public string $childProp;
+    public function testPrivatePropertiesAreIncluded(): void
+    {
+        $metadata = $this->reader->buildMetadata(UserDTO::class, User::class);
+        $mappings = $metadata->getMappingsForDirection(UserDTO::class, User::class);
+
+        // password is private but should be included
+        $passwordMapping = $this->findMapping($mappings, 'password');
+        $this->assertNotNull($passwordMapping);
+        $this->assertSame('password', $passwordMapping->sourceProperty);
+        $this->assertSame('password', $passwordMapping->targetProperty);
+    }
+
+    /**
+     * Helper to find a mapping by source property name.
+     *
+     * @param array<\Alecszaharia\Simmap\Metadata\PropertyMapping> $mappings
+     */
+    private function findMapping(array $mappings, string $sourceProperty): ?\Alecszaharia\Simmap\Metadata\PropertyMapping
+    {
+        foreach ($mappings as $mapping) {
+            if ($mapping->sourceProperty === $sourceProperty) {
+                return $mapping;
+            }
+        }
+        return null;
+    }
 }
