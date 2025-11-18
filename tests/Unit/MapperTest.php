@@ -176,6 +176,48 @@ final class MapperTest extends TestCase
         $this->assertSame('should-be-ignored', $dtoBack->temporaryToken); // Unchanged because #[IgnoreMap]
     }
 
+    public function testCWithAllFeaturesButIncompleteSource(): void
+    {
+        // Create a DTO with all types of properties
+        $dto = new UserDTO();
+        //$dto->email = 'complete@example.com';
+        //$dto->fullName = 'Complete Test';
+        //$dto->age = 42;
+        $dto->temporaryToken = 'should-be-ignored';
+        $dto->biography = 'Full stack developer';
+        $dto->setPassword('secret');
+
+        // Map to User
+        $user = $this->mapper->map($dto, User::class);
+
+        // Verify all mappings
+        $this->assertSame('complete@example.com', $user->email); // Same name
+        $this->assertSame('Complete Test', $user->name); // Custom mapping
+        $this->assertSame(42, $user->age); // Same name
+        $this->assertSame('Full stack developer', $user->profile->bio); // Nested
+        $this->assertSame('secret', $user->getPassword()); // Private property
+
+        // Modify user and map back to the original DTO instance
+        $user->email = 'modified@example.com';
+        $user->name = 'Modified Name';
+        $user->age = 43;
+        $user->profile->bio = 'Updated bio';
+        $user->setPassword('newsecret');
+        $user->internalId = 'should-not-map';
+
+        // Reuse the same DTO instance to preserve ignored properties
+        $dtoBack = $dto;
+        $this->mapper->map($user, $dtoBack);
+
+        // Verify reverse mappings
+        $this->assertSame('modified@example.com', $dtoBack->email);
+        $this->assertSame('Modified Name', $dtoBack->fullName);
+        $this->assertSame(43, $dtoBack->age);
+        $this->assertSame('Updated bio', $dtoBack->biography);
+        $this->assertSame('newsecret', $dtoBack->getPassword());
+        $this->assertSame('should-be-ignored', $dtoBack->temporaryToken); // Unchanged because #[IgnoreMap]
+    }
+
     public function testNullValuesAreMapped(): void
     {
         $dto = new UserDTO();

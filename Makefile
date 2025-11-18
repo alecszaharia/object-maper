@@ -1,7 +1,7 @@
 .PHONY: help test test-coverage test-file test-filter benchmark example clean install
 
 # Docker command configuration
-DOCKER_RUN = docker run --rm -t -v $$(pwd):/app --user $$(id -u):$$(id -g) -w /app tools:latest
+DOCKER_RUN = docker run --rm -t -v $$(pwd):/app --user $$(id -u):$$(id -g) -w /app mapper:latest
 PHP = $(DOCKER_RUN) php
 
 help: ## Show this help message
@@ -9,6 +9,9 @@ help: ## Show this help message
 	@echo ''
 	@echo 'Available targets:'
 	@awk 'BEGIN {FS = ":.*?## "} /^[a-zA-Z_-]+:.*?## / {printf "  %-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
+
+build: ## Install dependencies
+	docker build -f .develop/Dockerfile -t mapper:latest .
 
 install: ## Install dependencies
 	composer install
