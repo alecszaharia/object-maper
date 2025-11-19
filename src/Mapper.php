@@ -175,6 +175,10 @@ final class Mapper implements MapperInterface
         foreach ($propertyMappings as $mapping) {
             try {
                 // Read value from source (supports nested paths, private properties, getters)
+                if(!$this->propertyAccessor->isReadable($source, $mapping->sourceProperty)) {
+                    continue;
+                }
+
                 $value = $this->propertyAccessor->getValue($source, $mapping->sourceProperty);
 
                 // Handle array mapping if this is an array property
@@ -189,6 +193,10 @@ final class Mapper implements MapperInterface
 
                 // For nested paths, ensure intermediate objects exist
                 $this->ensureNestedPathExists($target, $mapping->targetProperty);
+
+                if(!$this->propertyAccessor->isWritable($target, $mapping->targetProperty)) {
+                    continue;
+                }
 
                 // Write value to target (supports nested paths, private properties, setters)
                 $this->propertyAccessor->setValue($target, $mapping->targetProperty, $value);
