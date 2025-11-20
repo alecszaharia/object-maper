@@ -45,6 +45,7 @@ final class MetadataReader
      */
     public function buildMetadata(string $sourceClass, string $targetClass): MappingMetadata
     {
+
         $sourceReflection = new ReflectionClass($sourceClass);
         $targetReflection = new ReflectionClass($targetClass);
 
@@ -54,7 +55,6 @@ final class MetadataReader
 
         // Build property mappings
         $propertyMappings = $this->buildPropertyMappings($sourceReflection, $targetReflection);
-
         return new MappingMetadata(
             $sourceClass,
             $targetClass,

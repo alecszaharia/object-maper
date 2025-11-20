@@ -167,9 +167,9 @@ final class Mapper implements MapperInterface
     {
         // Simple string comparison is more efficient than sorting for 2 items
         if ($classA <= $classB) {
-            return $classA . '<->' . $classB;
+            return $classA .  $classB;
         }
-        return $classB . '<->' . $classA;
+        return $classB .  $classA;
     }
 
     /**

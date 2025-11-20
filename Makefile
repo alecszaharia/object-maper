@@ -37,7 +37,7 @@ test-filter: ## Run tests matching filter (usage: make test-filter FILTER=testMe
 	$(PHP) vendor/bin/phpunit --filter $(FILTER)
 
 benchmark: ## Run performance benchmarks
-	$(PHP) tests/Benchmarks/WorstCaseBenchmark.php
+	$(PHP) tests/Benchmark.php
 
 example: ## Run the basic usage example
 	$(PHP) examples/BasicUsage.php
