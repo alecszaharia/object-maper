@@ -19,6 +19,21 @@ use ReflectionProperty;
 final class MetadataReader
 {
     /**
+     * @var array<string, bool> Cache for subclass checks to avoid repeated is_subclass_of() calls
+     */
+    private array $subclassCache = [];
+
+    /**
+     * Built-in iterable classes for quick lookup
+     */
+    private const ITERABLE_CLASSES = [
+        'ArrayObject' => true,
+        'ArrayIterator' => true,
+        'Iterator' => true,
+        'Traversable' => true,
+        'IteratorAggregate' => true,
+    ];
+    /**
      * Build mapping metadata for a class pair.
      *
      * Creates a bidirectional metadata object that can be used for mapping
@@ -124,7 +139,9 @@ final class MetadataReader
         array &$mappingKeys,
         bool $reversed
     ): void {
-        $toProperties = $this->getPropertyNames($toReflection);
+        // Convert property names to hash map for O(1) lookups instead of O(n) linear search
+        $toPropertiesNames = $this->getPropertyNames($toReflection);
+        $toPropertiesMap = array_flip($toPropertiesNames);
 
         foreach ($fromReflection->getProperties() as $fromProperty) {
             // Skip properties marked with #[IgnoreMap] in source
@@ -145,8 +162,8 @@ final class MetadataReader
                 if (!$this->targetPathExists($toReflection, $toName)) {
                     continue;
                 }
-            } elseif (in_array($fromName, $toProperties, true)) {
-                // Default: map to same property name
+            } elseif (isset($toPropertiesMap[$fromName])) {
+                // Default: map to same property name (O(1) hash lookup)
                 $toName = $fromName;
             } else {
                 // No matching property and no #[MapTo], skip
@@ -345,6 +362,8 @@ final class MetadataReader
 
     /**
      * Check if a reflection type is an array or iterable type.
+     *
+     * Uses caching to avoid repeated is_subclass_of() calls which are expensive.
      */
     private function isArrayType(\ReflectionType $type): bool
     {
@@ -359,22 +378,29 @@ final class MetadataReader
             return true;
         }
 
-        // Check for common collection classes
-        $iterableClasses = [
-            'ArrayObject',
-            'ArrayIterator',
-            'Iterator',
-            'Traversable',
-            'IteratorAggregate',
-        ];
+        // Check hash map first for direct match (O(1))
+        if (isset(self::ITERABLE_CLASSES[$typeName])) {
+            return true;
+        }
 
-        foreach ($iterableClasses as $iterableClass) {
-            if ($typeName === $iterableClass || is_subclass_of($typeName, $iterableClass)) {
-                return true;
+        // Check cache for subclass results (avoid expensive is_subclass_of)
+        if (isset($this->subclassCache[$typeName])) {
+            return $this->subclassCache[$typeName];
+        }
+
+        // Check subclass relationships (expensive - only done once per type)
+        $isIterable = false;
+        foreach (self::ITERABLE_CLASSES as $iterableClass => $_) {
+            if (is_subclass_of($typeName, $iterableClass)) {
+                $isIterable = true;
+                break;
             }
         }
 
-        return false;
+        // Cache the result
+        $this->subclassCache[$typeName] = $isIterable;
+
+        return $isIterable;
     }
 
     /**

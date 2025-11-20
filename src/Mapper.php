@@ -41,6 +41,16 @@ final class Mapper implements MapperInterface
     private array $metadataCache = [];
 
     /**
+     * @var array<string, bool> Tracks cache access order for LRU eviction
+     */
+    private array $cacheAccessOrder = [];
+
+    /**
+     * @var int Maximum number of metadata entries to cache
+     */
+    private int $maxCacheSize;
+
+    /**
      * @var array<string, bool> Stack of class names currently being mapped (for circular reference detection)
      */
     private array $mappingStack = [];
@@ -50,10 +60,12 @@ final class Mapper implements MapperInterface
 
     public function __construct(
         ?PropertyAccessorInterface $propertyAccessor = null,
-        ?MetadataReader $metadataReader = null
+        ?MetadataReader $metadataReader = null,
+        int $cacheSize = 1000
     ) {
         $this->propertyAccessor = $propertyAccessor ?? PropertyAccess::createPropertyAccessor();
         $this->metadataReader = $metadataReader ?? new MetadataReader();
+        $this->maxCacheSize = max(10, $cacheSize);
     }
 
     /**
@@ -99,6 +111,7 @@ final class Mapper implements MapperInterface
      * Get or build metadata for a class pair.
      *
      * Metadata is cached per unique class pair, not per direction.
+     * Uses LRU (Least Recently Used) eviction when cache reaches max size.
      *
      * @param class-string $sourceClass
      * @param class-string $targetClass
@@ -107,22 +120,39 @@ final class Mapper implements MapperInterface
     {
         $cacheKey = $this->buildCacheKey($sourceClass, $targetClass);
 
-        if (!isset($this->metadataCache[$cacheKey])) {
-            try {
-                $this->metadataCache[$cacheKey] = $this->metadataReader->buildMetadata(
-                    $sourceClass,
-                    $targetClass
-                );
-            } catch (\ReflectionException $e) {
-                throw new MappingException(
-                    sprintf('Failed to build metadata: %s', $e->getMessage()),
-                    0,
-                    $e
-                );
-            }
+        if (isset($this->metadataCache[$cacheKey])) {
+            // Update access order (move to end - most recently used)
+            unset($this->cacheAccessOrder[$cacheKey]);
+            $this->cacheAccessOrder[$cacheKey] = true;
+            return $this->metadataCache[$cacheKey];
         }
 
-        return $this->metadataCache[$cacheKey];
+        try {
+            $metadata = $this->metadataReader->buildMetadata(
+                $sourceClass,
+                $targetClass
+            );
+        } catch (\ReflectionException $e) {
+            throw new MappingException(
+                sprintf('Failed to build metadata: %s', $e->getMessage()),
+                0,
+                $e
+            );
+        }
+
+        // Check cache size and evict LRU entry if necessary
+        if (count($this->metadataCache) >= $this->maxCacheSize) {
+            // Get the least recently used key (first in access order)
+            $lruKey = array_key_first($this->cacheAccessOrder);
+            unset($this->metadataCache[$lruKey]);
+            unset($this->cacheAccessOrder[$lruKey]);
+        }
+
+        // Add new entry to cache
+        $this->metadataCache[$cacheKey] = $metadata;
+        $this->cacheAccessOrder[$cacheKey] = true;
+
+        return $metadata;
     }
 
     /**
@@ -135,10 +165,11 @@ final class Mapper implements MapperInterface
      */
     private function buildCacheKey(string $classA, string $classB): string
     {
-        // Sort alphabetically to ensure same key regardless of direction
-        $classes = [$classA, $classB];
-        sort($classes);
-        return implode('<->', $classes);
+        // Simple string comparison is more efficient than sorting for 2 items
+        if ($classA <= $classB) {
+            return $classA . '<->' . $classB;
+        }
+        return $classB . '<->' . $classA;
     }
 
     /**
