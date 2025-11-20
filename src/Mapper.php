@@ -181,6 +181,12 @@ final class Mapper implements MapperInterface
 
                 $value = $this->propertyAccessor->getValue($source, $mapping->sourceProperty);
 
+                // Skip mapping if source property is null/undefined
+                // This allows partial object updates without overwriting existing target properties
+                if ($value === null) {
+                    continue;
+                }
+
                 // Handle array mapping if this is an array property
                 if ($mapping->isArray && $value !== null) {
                     $value = $this->mapArray(

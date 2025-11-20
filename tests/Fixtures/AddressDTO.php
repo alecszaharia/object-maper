@@ -9,7 +9,7 @@ use Alecszaharia\Simmap\Attribute\Mappable;
 #[Mappable(targetClass: Address::class)]
 final class AddressDTO
 {
-    public string $street = '';
-    public string $city = '';
-    public string $zipCode = '';
+    public ?string $street = null;
+    public ?string $city = null;
+    public ?string $zipCode = null;
 }

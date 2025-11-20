@@ -11,13 +11,13 @@ use ArrayObject;
 #[Mappable(targetClass: CompanyWithArrayObject::class)]
 final class CompanyWithArrayObjectDTO
 {
-    public string $name = '';
+    public ?string $name = null;
 
     /**
      * @var ArrayObject<int, UserDTO>
      */
     #[MapTo(targetProperty: 'employees', targetClass: User::class)]
-    public ArrayObject $employeeDTOs;
+    public ?ArrayObject $employeeDTOs = null;
 
     public function __construct()
     {

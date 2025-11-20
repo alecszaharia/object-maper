@@ -1,7 +1,4 @@
 FROM composer:2 AS stage_composer
-ARG COMPOSER_AUTH
-ENV COMPOSER_AUTH ${COMPOSER_AUTH}
-
 
 FROM php:8.2-cli
 

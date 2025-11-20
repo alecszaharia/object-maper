@@ -11,15 +11,15 @@ use Alecszaharia\Simmap\Attribute\MapTo;
 #[Mappable(targetClass: UserDTO::class)]
 final class User
 {
-    public string $email = '';
+    public string $email;
 
     #[MapTo(targetProperty: 'fullName')]
-    public string $name = '';
+    public string $name;
 
-    public int $age = 0;
+    public int $age;
 
     #[IgnoreMap]
-    public string $internalId = '';
+    public string $internalId;
 
     public ?Profile $profile = null;
 

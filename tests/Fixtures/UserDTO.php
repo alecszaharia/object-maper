@@ -12,20 +12,20 @@ use Alecszaharia\Simmap\Attribute\MapTo;
 #[Mappable(targetClass: AdminUser::class)]
 final class UserDTO
 {
-    public string $email = '';
+    public ?string $email = null;
 
     #[MapTo(targetProperty: 'name')]
-    public string $fullName = '';
+    public ?string $fullName = null;
 
-    public int $age = 0;
+    public ?int $age = null;
 
     #[IgnoreMap]
-    public string $temporaryToken = '';
+    public ?string $temporaryToken = null;
 
     #[MapTo(targetProperty: 'profile.bio')]
-    public string $biography = '';
+    public ?string $biography = null;
 
-    private string $password = '';
+    private ?string $password = null;
 
     public function getPassword(): string
     {

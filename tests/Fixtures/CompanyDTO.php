@@ -10,17 +10,17 @@ use Alecszaharia\Simmap\Attribute\MapTo;
 #[Mappable(targetClass: Company::class)]
 final class CompanyDTO
 {
-    public string $name = '';
+    public ?string $name = null;
 
     /**
      * @var array<UserDTO>
      */
     #[MapTo(targetProperty: 'employees', targetClass: User::class)]
-    public array $employeeDTOs = [];
+    public ?array $employeeDTOs = null;
 
     /**
      * @var array<AddressDTO>
      */
     #[MapTo(targetProperty: 'locations', targetClass: Address::class)]
-    public array $locationDTOs = [];
+    public ?array $locationDTOs = null;
 }
