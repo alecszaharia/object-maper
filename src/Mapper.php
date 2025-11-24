@@ -10,7 +10,7 @@ use Alecszaharia\Simmap\Metadata\MetadataReader;
 use Alecszaharia\Simmap\Metadata\PropertyMapping;
 use ReflectionClass;
 use Symfony\Component\PropertyAccess\Exception\ExceptionInterface as PropertyAccessException;
-use Symfony\Component\PropertyAccess\PropertyAccess;
+use Symfony\Component\PropertyAccess\PropertyAccessorBuilder;
 use Symfony\Component\PropertyAccess\PropertyAccessorInterface;
 
 /**
@@ -60,10 +60,16 @@ final class Mapper implements MapperInterface
 
     public function __construct(
         ?PropertyAccessorInterface $propertyAccessor = null,
-        ?MetadataReader $metadataReader = null,
-        int $cacheSize = 1000
-    ) {
-        $this->propertyAccessor = $propertyAccessor ?? PropertyAccess::createPropertyAccessor();
+        ?MetadataReader            $metadataReader = null,
+        int                        $cacheSize = 1000
+    )
+    {
+        $builder = (new PropertyAccessorBuilder())
+            ->enableMagicCall(false)     // if you don’t use __call
+            ->enableMagicGet(false)      // if you don’t use __get
+            ->enableMagicSet(false);     // if you don’t use __set
+
+        $this->propertyAccessor = $propertyAccessor ?? $builder->getPropertyAccessor();
         $this->metadataReader = $metadataReader ?? new MetadataReader();
         $this->maxCacheSize = max(10, $cacheSize);
     }
@@ -167,9 +173,9 @@ final class Mapper implements MapperInterface
     {
         // Simple string comparison is more efficient than sorting for 2 items
         if ($classA <= $classB) {
-            return $classA .  $classB;
+            return $classA . $classB;
         }
-        return $classB .  $classA;
+        return $classB . $classA;
     }
 
     /**
@@ -199,16 +205,17 @@ final class Mapper implements MapperInterface
     private function executeMapping(
         object $source,
         object $target,
-        array $propertyMappings,
+        array  $propertyMappings,
         string $sourceClass,
         string $targetClass
-    ): void {
+    ): void
+    {
         foreach ($propertyMappings as $mapping) {
             try {
                 // Read value from source (supports nested paths, private properties, getters)
-                if(!$this->propertyAccessor->isReadable($source, $mapping->sourceProperty)) {
-                    continue;
-                }
+//                if(!$this->propertyAccessor->isReadable($source, $mapping->sourceProperty)) {
+//                    continue;
+//                }
 
                 $value = $this->propertyAccessor->getValue($source, $mapping->sourceProperty);
 
@@ -231,19 +238,20 @@ final class Mapper implements MapperInterface
                 // For nested paths, ensure intermediate objects exist
                 $this->ensureNestedPathExists($target, $mapping->targetProperty);
 
-                if(!$this->propertyAccessor->isWritable($target, $mapping->targetProperty)) {
-                    continue;
-                }
+//                if(!$this->propertyAccessor->isWritable($target, $mapping->targetProperty)) {
+//                    continue;
+//                }
 
                 // Write value to target (supports nested paths, private properties, setters)
                 $this->propertyAccessor->setValue($target, $mapping->targetProperty, $value);
             } catch (PropertyAccessException $e) {
-                throw MappingException::propertyAccessFailed(
-                    $sourceClass,
-                    $targetClass,
-                    $mapping->sourceProperty . ' -> ' . $mapping->targetProperty,
-                    $e->getMessage()
-                );
+                continue;
+//                throw MappingException::propertyAccessFailed(
+//                    $sourceClass,
+//                    $targetClass,
+//                    $mapping->sourceProperty . ' -> ' . $mapping->targetProperty,
+//                    $e->getMessage()
+//                );
             }
         }
     }
@@ -350,11 +358,12 @@ final class Mapper implements MapperInterface
      * @throws MappingException If array mapping fails
      */
     private function mapArray(
-        mixed $sourceArray,
+        mixed           $sourceArray,
         PropertyMapping $mapping,
-        string $sourceClass,
-        string $targetClass
-    ): array|object {
+        string          $sourceClass,
+        string          $targetClass
+    ): array|object
+    {
         // Determine the target item class for array mapping
         // Use targetItemClass (preferred) or fall back to targetClass for backward compatibility
         $targetItemClass = $mapping->targetItemClass ?? $mapping->targetClass;
