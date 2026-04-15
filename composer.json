@@ -1,7 +1,6 @@
 {
     "name": "alecszaharia/simmap",
     "description": "A symmetrical object mapper",
-    "version": "2.0.0",
     "type": "library",
     "autoload": {
         "psr-4": {
