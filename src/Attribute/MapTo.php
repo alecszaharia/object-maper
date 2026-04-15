@@ -1,25 +1,44 @@
 <?php
 
+declare(strict_types=1);
+
 namespace Alecszaharia\Simmap\Attribute;
 
 use Attribute;
 
 /**
- * Defines a mapping between properties of two objects.
+ * Maps a property to a different property name in the target class.
  *
- * This attribute supports symmetrical mapping - it can be read from either direction.
- * The targetProperty parameter can use PropertyAccess notation for nested properties.
+ * Supports nested property paths using dot notation for accessing/setting
+ * nested object properties via Symfony PropertyAccessor.
  *
- * Examples:
- *   #[MapTo]              - Maps to simple property defaulting to the same name
- *   #[MapTo('name')]              - Maps to simple property
- *   #[MapTo('user.name')]         - Maps to nested property
- *   #[MapTo('address.city.name')] - Maps to deeply nested property
+ * For array/collection properties, use targetClass to specify the class to map each item to.
+ *
+ * @example
+ * // Simple property name mapping
+ * #[MapTo(targetProperty: 'fullName')]
+ * private string $name;
+ *
+ * @example
+ * // Nested property path mapping
+ * #[MapTo(targetProperty: 'address.street')]
+ * private string $streetName;
+ *
+ * @example
+ * // Array mapping with target class
+ * #[MapTo(targetProperty: 'users', targetClass: User::class)]
+ * private array $userDTOs;
  */
 #[Attribute(Attribute::TARGET_PROPERTY)]
-class MapTo
+final class MapTo
 {
-    public function __construct(public readonly ?string $targetProperty = null)
-    {
+    /**
+     * @param string $targetProperty The target property name or path (supports dot notation)
+     * @param class-string|null $targetClass The target class for array items (optional, for array mapping)
+     */
+    public function __construct(
+        public readonly string $targetProperty,
+        public readonly ?string $targetClass = null
+    ) {
     }
 }
