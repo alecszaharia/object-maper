@@ -77,4 +77,43 @@ final class MappingMetadataTest extends TestCase
 
         $this->assertFalse($metadata->isValidMapping);
     }
+
+    public function testReversedMappingsAreCached(): void
+    {
+        $mappings = [
+            new PropertyMapping('email', 'email'),
+            new PropertyMapping('fullName', 'name'),
+        ];
+
+        $metadata = new MappingMetadata('DTO', 'Entity', $mappings, true);
+
+        // First reverse call computes reversed mappings
+        $reversed1 = $metadata->getMappingsForDirection('Entity', 'DTO');
+        // Second reverse call should return same cached array
+        $reversed2 = $metadata->getMappingsForDirection('Entity', 'DTO');
+
+        $this->assertSame($reversed1, $reversed2, 'Reversed mappings should be cached and return same array instance');
+        $this->assertCount(2, $reversed1);
+        $this->assertSame('name', $reversed1[1]->sourceProperty);
+        $this->assertSame('fullName', $reversed1[1]->targetProperty);
+    }
+
+    public function testForwardMappingsNotAffectedByReverseCache(): void
+    {
+        $mappings = [
+            new PropertyMapping('fullName', 'name'),
+        ];
+
+        $metadata = new MappingMetadata('DTO', 'Entity', $mappings, true);
+
+        // Get reversed first
+        $reversed = $metadata->getMappingsForDirection('Entity', 'DTO');
+        // Then get forward
+        $forward = $metadata->getMappingsForDirection('DTO', 'Entity');
+
+        // Forward should return original mappings, not reversed
+        $this->assertSame($mappings, $forward);
+        $this->assertSame('fullName', $forward[0]->sourceProperty);
+        $this->assertSame('name', $reversed[0]->sourceProperty);
+    }
 }

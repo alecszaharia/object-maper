@@ -55,6 +55,11 @@ final class Mapper implements MapperInterface
      */
     private array $mappingStack = [];
 
+    /**
+     * @var array<string, ReflectionClass> Cached ReflectionClass instances per class name
+     */
+    private array $reflectionCache = [];
+
     private readonly PropertyAccessorInterface $propertyAccessor;
     private readonly MetadataReader $metadataReader;
 
@@ -173,9 +178,9 @@ final class Mapper implements MapperInterface
     {
         // Simple string comparison is more efficient than sorting for 2 items
         if ($classA <= $classB) {
-            return $classA . $classB;
+            return $classA . '|' . $classB;
         }
-        return $classB . $classA;
+        return $classB . '|' . $classA;
     }
 
     /**
@@ -187,7 +192,8 @@ final class Mapper implements MapperInterface
     private function instantiateTarget(string $className): object
     {
         try {
-            $reflection = new ReflectionClass($className);
+            $reflection = $this->reflectionCache[$className]
+                ??= new ReflectionClass($className);
             return $reflection->newInstanceWithoutConstructor();
         } catch (\ReflectionException $e) {
             throw MappingException::instantiationFailed($className, $e->getMessage());
@@ -226,7 +232,7 @@ final class Mapper implements MapperInterface
                 }
 
                 // Handle array mapping if this is an array property
-                if ($mapping->isArray && $value !== null) {
+                if ($mapping->isArray) {
                     $value = $this->mapArray(
                         $value,
                         $mapping,
@@ -278,12 +284,8 @@ final class Mapper implements MapperInterface
 
         // Traverse the path and initialize null objects
         $current = $object;
-        $currentPath = [];
 
         foreach ($parts as $part) {
-            $currentPath[] = $part;
-            $pathString = implode('.', $currentPath);
-
             try {
                 $value = $this->propertyAccessor->getValue($current, $part);
 
@@ -313,13 +315,16 @@ final class Mapper implements MapperInterface
     private function instantiateNestedObject(object $object, string $propertyName): object
     {
         try {
-            $reflection = new ReflectionClass($object);
+            $objectClass = get_class($object);
+            $reflection = $this->reflectionCache[$objectClass]
+                ??= new ReflectionClass($object);
             $property = $reflection->getProperty($propertyName);
             $type = $property->getType();
 
             if ($type instanceof \ReflectionNamedType && !$type->isBuiltin()) {
                 $className = $type->getName();
-                $nestedReflection = new ReflectionClass($className);
+                $nestedReflection = $this->reflectionCache[$className]
+                    ??= new ReflectionClass($className);
                 return $nestedReflection->newInstanceWithoutConstructor();
             }
 
@@ -424,13 +429,7 @@ final class Mapper implements MapperInterface
 
                 // Recursively map the item to the target item class
                 $mappedItems[$key] = $this->map($item, $targetItemClass);
-
-                // Remove from mapping stack
-                unset($this->mappingStack[$itemClass]);
             } catch (MappingException $e) {
-                // Remove from mapping stack on error
-                unset($this->mappingStack[$itemClass]);
-
                 // Re-throw with array context if not already an array mapping error
                 if (!str_contains($e->getMessage(), 'array item at index')) {
                     throw MappingException::arrayMappingFailed(
@@ -442,6 +441,8 @@ final class Mapper implements MapperInterface
                     );
                 }
                 throw $e;
+            } finally {
+                unset($this->mappingStack[$itemClass]);
             }
 
             $index++;

@@ -27,7 +27,7 @@ final class UserDTO
 
     private ?string $password = null;
 
-    public function getPassword(): string
+    public function getPassword(): ?string
     {
         return $this->password;
     }

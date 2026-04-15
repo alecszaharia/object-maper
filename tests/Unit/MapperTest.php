@@ -352,7 +352,7 @@ final class MapperTest extends TestCase
         $dto = new CompanyDTO();
         $dto->name = 'Multi Corp';
 
-        $emp = new UserDTO();!
+        $emp = new UserDTO();
         $emp->email = 'employee@multi.com';
         $emp->fullName = 'Employee Name';
         $dto->employeeDTOs = [$emp];
@@ -464,5 +464,102 @@ final class MapperTest extends TestCase
         $this->assertInstanceOf(\ArrayObject::class, $dtoBack->employeeDTOs);
         $this->assertCount(2, $dtoBack->employeeDTOs);
         $this->assertSame('ao1@test.com', $dtoBack->employeeDTOs[0]->email);
+    }
+
+    // ===== Bug Fix Regression Tests =====
+
+    public function testNullPasswordDoesNotThrowTypeError(): void
+    {
+        // Regression: UserDTO::getPassword() had return type `string` but property is ?string = null.
+        // This caused TypeError when PropertyAccessor read the password via getter.
+        $dto = new UserDTO();
+        // password is null (default) — do NOT call setPassword()
+
+        $this->assertNull($dto->getPassword());
+
+        // Mapping should not throw TypeError
+        $user = new User();
+        $user->setPassword('keep-this');
+
+        $this->mapper->map($dto, $user);
+
+        // Null password should be skipped, preserving target value
+        $this->assertSame('keep-this', $user->getPassword());
+    }
+
+    public function testMapperWorksAfterFailedArrayMapping(): void
+    {
+        // Regression: mappingStack leaked on non-MappingException errors.
+        // After a failed array mapping, subsequent mappings should still work.
+        $dto = new CompanyDTO();
+        $dto->name = 'Bad Corp';
+        $dto->employeeDTOs = ['not-an-object']; // triggers arrayItemNotObject
+
+        try {
+            $this->mapper->map($dto, Company::class);
+            $this->fail('Expected MappingException');
+        } catch (MappingException $e) {
+            $this->assertStringContainsString('is not an object', $e->getMessage());
+        }
+
+        // Mapper should still work for subsequent calls — no corrupted state
+        $goodDto = new UserDTO();
+        $goodDto->email = 'works@after-failure.com';
+        $goodDto->fullName = 'Still Works';
+
+        $user = $this->mapper->map($goodDto, User::class);
+        $this->assertSame('works@after-failure.com', $user->email);
+        $this->assertSame('Still Works', $user->name);
+    }
+
+    public function testRepeatedMappingSameClassPairReusesCache(): void
+    {
+        // Verifies metadata + reflection caching: mapping same class pair many times
+        // should produce correct results each time (no stale cache issues)
+        $results = [];
+        for ($i = 0; $i < 10; $i++) {
+            $dto = new UserDTO();
+            $dto->email = "user{$i}@cache.com";
+            $dto->fullName = "User {$i}";
+            $dto->age = 20 + $i;
+
+            $results[] = $this->mapper->map($dto, User::class);
+        }
+
+        // Each result should have its own correct values
+        for ($i = 0; $i < 10; $i++) {
+            $this->assertSame("user{$i}@cache.com", $results[$i]->email);
+            $this->assertSame("User {$i}", $results[$i]->name);
+            $this->assertSame(20 + $i, $results[$i]->age);
+        }
+    }
+
+    public function testBidirectionalMappingBothDirectionsCached(): void
+    {
+        // Verifies reversed mappings cache: forward then reverse then forward again
+        // should all produce correct results
+        $dto = new UserDTO();
+        $dto->email = 'bidir@test.com';
+        $dto->fullName = 'Bidir Test';
+        $dto->age = 25;
+
+        // Forward: DTO → User
+        $user = $this->mapper->map($dto, User::class);
+        $this->assertSame('Bidir Test', $user->name);
+
+        // Reverse: User → DTO (triggers reversed mapping cache)
+        $user->name = 'Modified';
+        $dtoBack = $this->mapper->map($user, UserDTO::class);
+        $this->assertSame('Modified', $dtoBack->fullName);
+
+        // Forward again: should still use correct (non-reversed) mappings
+        $dto2 = new UserDTO();
+        $dto2->email = 'second@test.com';
+        $dto2->fullName = 'Second';
+        $dto2->age = 30;
+
+        $user2 = $this->mapper->map($dto2, User::class);
+        $this->assertSame('Second', $user2->name);
+        $this->assertSame('second@test.com', $user2->email);
     }
 }

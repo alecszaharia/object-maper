@@ -11,8 +11,13 @@ namespace Alecszaharia\Simmap\Metadata;
  * For example, mapping between UserDTO and User shares the same metadata
  * regardless of which direction the mapping occurs.
  */
-final readonly class MappingMetadata
+final class MappingMetadata
 {
+    /**
+     * @var array<PropertyMapping>|null Cached reversed mappings for opposite direction
+     */
+    private ?array $reversedMappings = null;
+
     /**
      * @param class-string $classA First class in the mapping pair
      * @param class-string $classB Second class in the mapping pair
@@ -20,10 +25,10 @@ final readonly class MappingMetadata
      * @param bool $isValidMapping Whether both classes have reciprocal #[Mappable] attributes
      */
     public function __construct(
-        public string $classA,
-        public string $classB,
-        public array $propertyMappings,
-        public bool $isValidMapping
+        public readonly string $classA,
+        public readonly string $classB,
+        public readonly array $propertyMappings,
+        public readonly bool $isValidMapping
     ) {
     }
 
@@ -41,10 +46,14 @@ final readonly class MappingMetadata
             return $this->propertyMappings;
         }
 
-        // Otherwise, reverse all mappings for the opposite direction
-        return array_map(
-            fn(PropertyMapping $mapping) => $mapping->reverse(),
-            $this->propertyMappings
-        );
+        // Lazy-compute and cache reversed mappings
+        if ($this->reversedMappings === null) {
+            $this->reversedMappings = array_map(
+                fn(PropertyMapping $mapping) => $mapping->reverse(),
+                $this->propertyMappings
+            );
+        }
+
+        return $this->reversedMappings;
     }
 }
